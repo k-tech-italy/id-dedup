@@ -1,0 +1,29 @@
+FILE_ENV="${ENVFILE:-.env}"
+
+if [ ! -e .venv ]; then
+    echo "Venv not found. create it first with 'uv venv'."
+    echo "Then run again 'direnv allow'"
+    exit 0
+fi
+
+
+
+if [ -e ${FILE_ENV} ]; then
+    dotenv ${FILE_ENV}
+else
+    echo "ERROR: ${FILE_ENV} environment file not found."
+    echo "Set ENVFILE variable pointing to your envfile."
+    echo "By default it will point to a local .env"
+    exit 1
+fi
+export PYTHONPATH="$PYTHONPATH:./src"
+
+nvmrc=~/.nvm/nvm.sh
+source $nvmrc
+nvm use
+PATH_add node_modules/.bin
+
+. .venv/bin/activate
+unset PS1
+
+

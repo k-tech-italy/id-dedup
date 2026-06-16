@@ -1,0 +1,58 @@
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body class="bg-gray-800">
+<script src="{% static 'js/bundle.js' %}"></script>
+<div class="card flex-center">
+    <h3>Writes Upside-Down</h3>
+    <p>The Zero Gravity Pen can be used to write in any orientation, including upside-down. It even works in outer
+        space.</p>
+
+    <button id="toggleDark" onclick="document.body.classList.toggle('dark')">Toggle Dark Mode
+    </button>
+</div>
+<p class="text-chestnut">Custom color from theme</p>
+
+<div class="flex flex-col my-4 mx-2">
+    <label class="text-amber-200"><input type="checkbox" checked> Browser default</label>
+    <label class="text-amber-200"><input type="checkbox" class="accent-teal-500" checked> Accent</label>
+</div>
+
+
+<p class="sm:text-7xl text-5xl">Traditional scaling</p>
+<p class="text-[min(10vw,70px)] selection:bg-green-400 selection:text-white">Linear scaling with fluid text with custom selection color</p>
+
+<label class="my-4 block">
+    <input type="file"
+           class="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-violet-50 file:px-4
+file:font-semibold file:text-violet-700 hover:file:bg-violet-100">
+</label>
+
+<div class="max-w-lg mx-auto p-8">
+<details class="open:bg-white">
+    <summary class="text-sm  leading-6 text-slate-900 dark:text-white font-semibold select-none">Header</summary>
+    <div class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
+    Detail here. Lorem ipsum. Bla bla bla
+    </div>
+</details>
+</div>
+
+<!-- caret -->
+<textarea class="w-full caret-pink-500 p-2 text-white" placeholder="Type something to see pink caret"></textarea>
+
+// To showcase the demo of dark theme. Copy paste :)
+<script type="text/javascript">
+    document.addEventListener("DOMContentLoaded", () => {
+        const toggleDark = document.getElementById('toggleDark')
+        toggleDark.addEventListener('click', function () {
+            document.documentElement.classList.toggle('dark')
+            alert("click!")
+        });
+    });
+</script>
+
+</body>
+</html>

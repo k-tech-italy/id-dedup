@@ -1,0 +1,63 @@
+target-version = "py313"
+line-length = 150
+
+[lint.isort]
+case-sensitive = true
+
+[lint]
+select = [
+    "A", # prevent using keywords that clobber python builtins
+    "ANN", # flake8 annotations
+    "B", # bugbear: security warnings
+    "BLE", # blind exceptions
+    "C4", # flake8-comprehensions
+    "C90", # McCabe complexity
+    "COM", # flake8-commas
+    "D", # pydocstyle
+    "DJ", # flake8-django
+    "E", # pycodestylex
+    "E4", "E7", "E9",
+    "ERA", # eradicate
+    "F", # pyflakes
+    "FLY", # flynt
+    "FURB", # refurb
+    "I", # isort
+    "ICN", # flake8-import-conventions
+    "ISC", # implicit string concatenation
+    "N", # Pep* naming
+    "PERF", # perflint
+    "PIE", # flake8-pie
+    "PL", # PyLint
+    "PT", # flake8-pytest-style
+    "Q", # flake8-quotes
+    "R", # PyLint Refactor
+    "RET", # flake8-return
+    "S", # bandit,
+    "SIM", # flake8-simplify
+    "T10", # flake8-debugger
+    "T20", # flake8-print
+    "TC", # flake8-type-checking
+    "UP", # pyupgrade
+    "W", # pycodestyle warnings
+    "YTT", # flake8 2020
+]
+extend-select = ["UP", ]
+ignore = [
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D203", # incorrect-blank-line-before-class
+    "D212", # [*] Multi-line docstring summary should start at the first line
+    "D415", # First line should end with a period, question mark, or exclamation point
+    "Q000", # [*] Single quotes found but double quotes preferred
+    "ERA001", # Found commented-out code
+    "ANN204", # Missing return type annotation for special method `__init__`
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[lint.per-file-ignores]
+"tests/**.py" = ["S101", "PLR2004", "S", "SIM117", "D", "UP", "PLR0913", "ANN", "N999", "PT006"]
