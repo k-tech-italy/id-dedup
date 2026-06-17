@@ -32,10 +32,6 @@ def extract_embedding(image_path: str | pathlib.Path) -> np.ndarray | None:
     return face.embedding  # shape (512,), not yet L2-normalised
 
 
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
-
 @dataclass
 class ClusterMember:
     file: pathlib.Path
@@ -44,19 +40,64 @@ class ClusterMember:
 
 @dataclass
 class ClusterResult:
-    # Keys: DBSCAN label (-1 = singletons/noise, 0+ = groups)
+    """Stage-1 result: embeddings and DBSCAN groupings, no DB interaction.
+
+    Edit clusters freely (via split()) before passing to services.propose_matches(),
+    which is the only place DB queries are made.
+
+    Keys: DBSCAN label (-1 = noise/singletons, 0+ = confirmed groups).
+    After split(), new groups are assigned labels above the current maximum.
+    """
+
     clusters: dict[int, list[ClusterMember]] = field(default_factory=dict)
     failed: list[pathlib.Path] = field(default_factory=list)
 
     @property
     def singletons(self) -> list[ClusterMember]:
-        """Images where no second face was close enough to form a group."""
+        """Images DBSCAN could not group — no second face was close enough."""
         return self.clusters.get(-1, [])
 
     @property
     def groups(self) -> dict[int, list[ClusterMember]]:
-        """Confirmed clusters — each likely represents one Identity."""
+        """All clusters except DBSCAN noise — each is a candidate Identity."""
         return {k: v for k, v in self.clusters.items() if k != -1}
+
+    def split(self, label: int, move: set[pathlib.Path]) -> int:
+        """Move a subset of files out of cluster `label` into a new cluster.
+
+        Use this during stage-1 review when a cluster appears to contain more
+        than one person. The split is pure Python — no embeddings are recomputed
+        and no DB queries are made.
+
+        If `move` contains a single file it is appended to the -1 (singletons)
+        bucket; two or more files are assigned a new positive label. Either way
+        both groups receive individual ClusterProposals at stage 2.
+
+        Returns the label assigned to the split-off group (-1 or a new positive int).
+        Raises ValueError if `label` doesn't exist or none of `move` are in it.
+        """
+        if label not in self.clusters:
+            raise ValueError(f"No cluster with label {label}")
+
+        source = self.clusters[label]
+        moving = [m for m in source if m.file in move]
+        if not moving:
+            raise ValueError(f"None of the specified files are in cluster {label}")
+
+        remaining = [m for m in source if m.file not in move]
+
+        if remaining:
+            self.clusters[label] = remaining
+        else:
+            del self.clusters[label]
+
+        if len(moving) == 1:
+            self.clusters.setdefault(-1, []).append(moving[0])
+            return -1
+
+        new_label = max((k for k in self.clusters if k >= 0), default=-1) + 1
+        self.clusters[new_label] = moving
+        return new_label
 
 
 def cluster_dbscan(
@@ -85,11 +126,10 @@ def process_images(
     eps: float = 0.4,
     min_samples: int = 2,
 ) -> ClusterResult:
-    """Extract embeddings for a batch of images and cluster them.
+    """Stage 1 — extract embeddings and group by face similarity. No DB access.
 
-    Each group in the result is a candidate for a single Identity record.
-    Singletons and failed images still have embeddings/files available
-    for manual review or later re-clustering.
+    Call ClusterResult.split() to adjust groupings before moving to stage 2.
+    Pass the finalised ClusterResult to services.propose_matches() to run DB matching.
     """
     raw_pairs = [(f, extract_embedding(f)) for f in image_paths]
     valid_pairs = [(f, emb) for f, emb in raw_pairs if emb is not None]
