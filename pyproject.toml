@@ -10,7 +10,11 @@ packages = [
 
 dependencies = [
     "django~=5.2",
+    "insightface>=1.0.1",
+    "numpy>=2.4.6",
+    "opencv-python>=4.13.0.92",
     "pgvector>=0.4.2",
+    "scikit-learn>=1.9.0",
 ]
 
 [dependency-groups]
