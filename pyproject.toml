@@ -14,13 +14,20 @@ dependencies = [
     "numpy>=2.4.6",
     "opencv-python>=4.13.0.92",
     "pgvector>=0.4.2",
+    "psycopg[binary]>=3.3.4",
     "scikit-learn>=1.9.0",
 ]
 
 [dependency-groups]
 dev = [
     "bumpversion>=0.6.0",
+    "pytest>=9.1.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = ["ignore::FutureWarning:insightface"]
 
 [build-system]
 requires = ["hatchling"]
