@@ -86,6 +86,10 @@ class ClusterResult:
 
         remaining = [m for m in source if m.file not in move]
 
+        # Compute new_label before mutating clusters so a full-empty split
+        # doesn't recycle the just-deleted label as the new one.
+        new_label = max((k for k in self.clusters if k >= 0), default=-1) + 1
+
         if remaining:
             self.clusters[label] = remaining
         else:
@@ -95,7 +99,6 @@ class ClusterResult:
             self.clusters.setdefault(-1, []).append(moving[0])
             return -1
 
-        new_label = max((k for k in self.clusters if k >= 0), default=-1) + 1
         self.clusters[new_label] = moving
         return new_label
 
