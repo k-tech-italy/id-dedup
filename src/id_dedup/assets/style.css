@@ -1,37 +1,23 @@
 @import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @variant dark (&:where(.dark, .dark *));
 
-/* see https://tailwindcss.com/docs/theme#theme-variable-namespaces */
 @theme {
     --color-chestnut: #973F29;
 }
 
-@layer base {
-    h3 {
-        @apply text-base font-medium tracking-tight text-slate-900 dark:text-white;
-    }
-
-    p {
-        @apply mt-2 text-sm text-slate-500 dark:text-blue-100;
-    }
-
-    button {
-        @apply px-4 py-2 text-sm font-medium mt-8 text-blue-900 bg-blue-100 rounded-md;
-    }
-}
-
-@layer components {
-    .card {
-        @apply m-10 rounded-lg bg-white px-6 py-8 shadow-xl ring-1 ring-slate-900/5 dark:bg-black
-    }
-}
-
-@utility flex-center {
-    @apply flex justify-center items-center;
-
-}
+.breadcrumb-step { transition: color .15s, background .15s; }
+.fade-in { animation: fadeIn .2s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.slide-up { animation: slideUp .25s ease-out; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+.cluster-card { transition: border-color .15s, box-shadow .15s; }
+.cluster-card:hover { border-color: #4b5563; box-shadow: 0 0 0 1px rgba(59,130,246,.3); }
+.match-card { transition: background .15s; }
+.match-card:hover { background: rgb(55 65 81); }
+.progress-bar { transition: width .3s ease; }
+.pill { transition: all .15s; }
+.pill:hover { filter: brightness(1.15); }
+.sortable-ghost { opacity: 0.4; }
+.sortable-chosen { border-color: rgb(34 211 238); box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.3); }
+.drop-zone-active { border-color: rgb(56 189 248) !important; background: rgba(56, 189, 248, 0.05); }

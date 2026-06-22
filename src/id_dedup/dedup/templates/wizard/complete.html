@@ -1,0 +1,39 @@
+{% extends "wizard/base.html" %}
+{% block title %}Complete{% endblock %}
+{% block content %}
+<main class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+  <div class="text-center pt-16 sm:pt-24">
+    <div class="inline-flex items-center justify-center w-16 h-16 bg-emerald-600/20 rounded-full mb-6">
+      <svg class="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-semibold mb-2">Batch Complete</h1>
+    <p class="text-gray-400 mb-8">All clusters have been reviewed and assigned.</p>
+
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 text-left mb-8">
+      <dl class="grid grid-cols-3 gap-x-8 gap-y-4">
+        <div>
+          <dt class="text-xs text-gray-500 uppercase tracking-wider">Total Clusters</dt>
+          <dd class="text-xl font-semibold mt-0.5">{{ total_clusters }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-gray-500 uppercase tracking-wider">Assigned</dt>
+          <dd class="text-xl font-semibold mt-0.5 text-emerald-400">{{ assigned }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-gray-500 uppercase tracking-wider">New Identities</dt>
+          <dd class="text-xl font-semibold mt-0.5 text-sky-400">{{ new_identities }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="flex items-center justify-center gap-3">
+      <a href="{% url 'wizard:upload' %}"
+         class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors">
+        Review Another Batch
+      </a>
+    </div>
+  </div>
+</main>
+{% endblock %}

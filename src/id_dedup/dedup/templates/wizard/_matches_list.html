@@ -1,0 +1,32 @@
+<h3 class="text-sm font-medium text-gray-400 mb-4">Top-K Matches</h3>
+<div class="space-y-3" id="matchesList">
+  {% for match in matches %}
+  <div class="match-card bg-gray-800/50 border border-gray-700/60 rounded-lg p-3.5 cursor-pointer"
+       data-match="{{ match.identity_id }}"
+       @click="assignTo('{{ match.identity_id }}')">
+    <div class="flex items-start gap-3">
+      {% if match.image_url %}
+      <img src="{{ match.image_url }}" alt="" class="w-10 h-10 object-cover rounded flex-shrink-0 mt-0.5" />
+      {% else %}
+      <div class="w-10 h-10 bg-gray-700 rounded flex-shrink-0 mt-0.5"></div>
+      {% endif %}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium text-sm">{{ match.display_name }}</span>
+          <span class="text-sm font-semibold text-emerald-400">{{ match.similarity|floatformat:0 }}%</span>
+        </div>
+        <div class="mt-1.5 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 rounded-full" style="width:{{ match.similarity|floatformat:0 }}%"></div>
+        </div>
+        <div class="text-xs text-gray-500 mt-1.5">
+          {{ match.matched_image_count }} existing image{{ match.matched_image_count|pluralize }}
+        </div>
+      </div>
+      <button @click="assignTo('{{ match.identity_id }}')"
+              class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium rounded-lg px-3 py-1.5 transition-colors">
+        Assign
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>

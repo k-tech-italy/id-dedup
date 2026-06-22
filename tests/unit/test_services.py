@@ -5,13 +5,6 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from id_dedup.dedup.services import (
-    ClusterProposal,
-    IdentityMatch,
-    _query_candidates,
-    propose_for_members,
-    propose_matches,
-)
 from tests.unit.helpers import chainable_qs, mock_image_row
 
 
@@ -20,17 +13,23 @@ from tests.unit.helpers import chainable_qs, mock_image_row
 # ---------------------------------------------------------------------------
 
 def test_cluster_proposal_is_new_identity_when_no_matches():
+    from id_dedup.dedup.services import ClusterProposal
+
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[])
     assert proposal.is_new_identity is True
 
 
 def test_cluster_proposal_is_not_new_identity_when_matches_exist():
+    from id_dedup.dedup.services import ClusterProposal, IdentityMatch
+
     match = IdentityMatch(identity_id=1, display_name="Alice", similarity=0.85, matched_image_count=1)
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[match])
     assert proposal.is_new_identity is False
 
 
 def test_cluster_proposal_best_match_returns_first_entry():
+    from id_dedup.dedup.services import ClusterProposal, IdentityMatch
+
     matches = [
         IdentityMatch(identity_id=1, display_name="Alice", similarity=0.9, matched_image_count=2),
         IdentityMatch(identity_id=2, display_name="Bob", similarity=0.8, matched_image_count=1),
@@ -40,6 +39,8 @@ def test_cluster_proposal_best_match_returns_first_entry():
 
 
 def test_cluster_proposal_best_match_is_none_when_no_matches():
+    from id_dedup.dedup.services import ClusterProposal
+
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[])
     assert proposal.best_match is None
 
@@ -50,18 +51,24 @@ def test_cluster_proposal_best_match_is_none_when_no_matches():
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_for_members_returns_proposal_with_correct_members(mock_query, unit_member):
+    from id_dedup.dedup.services import propose_for_members
+
     proposal = propose_for_members([unit_member])
     assert proposal.members == [unit_member]
 
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_for_members_single_member_centroid_equals_embedding(mock_query, unit_member):
+    from id_dedup.dedup.services import propose_for_members
+
     proposal = propose_for_members([unit_member])
     np.testing.assert_array_equal(proposal.centroid, unit_member.embedding)
 
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_for_members_multi_member_centroid_is_unit_vector(mock_query, two_member_group):
+    from id_dedup.dedup.services import propose_for_members
+
     proposal = propose_for_members(two_member_group)
     norm = float(np.linalg.norm(proposal.centroid))
     assert abs(norm - 1.0) < 1e-5
@@ -69,6 +76,8 @@ def test_propose_for_members_multi_member_centroid_is_unit_vector(mock_query, tw
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_for_members_passes_params_to_query(mock_query, unit_member):
+    from id_dedup.dedup.services import propose_for_members
+
     propose_for_members([unit_member], top_k=3, min_similarity=0.7, similarity_band=0.05)
     args = mock_query.call_args.args
     assert args[1] == 3      # top_k
@@ -78,6 +87,8 @@ def test_propose_for_members_passes_params_to_query(mock_query, unit_member):
 
 @patch("id_dedup.dedup.services._query_candidates")
 def test_propose_for_members_returns_matches_from_query(mock_query, unit_member, strong_and_weak_match):
+    from id_dedup.dedup.services import propose_for_members
+
     mock_query.return_value = strong_and_weak_match
     proposal = propose_for_members([unit_member])
     assert proposal.proposed_matches == strong_and_weak_match
@@ -90,6 +101,8 @@ def test_propose_for_members_returns_matches_from_query(mock_query, unit_member,
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_matches_one_proposal_per_group(mock_query, cluster_result_with_groups):
+    from id_dedup.dedup.services import propose_matches
+
     proposals = propose_matches(cluster_result_with_groups)
     group_proposals = [p for p in proposals if len(p.members) > 1]
     assert len(group_proposals) == 2
@@ -97,6 +110,8 @@ def test_propose_matches_one_proposal_per_group(mock_query, cluster_result_with_
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_matches_one_proposal_per_singleton(mock_query, cluster_result_with_groups):
+    from id_dedup.dedup.services import propose_matches
+
     proposals = propose_matches(cluster_result_with_groups)
     singleton_proposals = [p for p in proposals if len(p.members) == 1]
     assert len(singleton_proposals) == 1
@@ -104,6 +119,8 @@ def test_propose_matches_one_proposal_per_singleton(mock_query, cluster_result_w
 
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_matches_groups_precede_singletons(mock_query, cluster_result_with_groups):
+    from id_dedup.dedup.services import propose_matches
+
     proposals = propose_matches(cluster_result_with_groups)
     # First two proposals should be the groups (2 members each)
     assert len(proposals[0].members) == 2
@@ -114,6 +131,8 @@ def test_propose_matches_groups_precede_singletons(mock_query, cluster_result_wi
 @patch("id_dedup.dedup.services._query_candidates", return_value=[])
 def test_propose_matches_empty_result_returns_empty(mock_query):
     from id_dedup.dedup.pipeline import ClusterResult
+    from id_dedup.dedup.services import propose_matches
+
     assert propose_matches(ClusterResult()) == []
 
 
@@ -122,6 +141,8 @@ def test_propose_matches_empty_result_returns_empty(mock_query):
 # ---------------------------------------------------------------------------
 
 def test_query_candidates_returns_empty_when_no_db_images():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     with patch("id_dedup.dedup.services.Image") as MockImage:
@@ -131,6 +152,8 @@ def test_query_candidates_returns_empty_when_no_db_images():
 
 
 def test_query_candidates_collapses_multiple_images_of_same_identity():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
@@ -145,6 +168,8 @@ def test_query_candidates_collapses_multiple_images_of_same_identity():
 
 
 def test_query_candidates_keeps_best_similarity_per_identity():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
@@ -158,6 +183,8 @@ def test_query_candidates_keeps_best_similarity_per_identity():
 
 
 def test_query_candidates_counts_all_matching_images_per_identity():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
@@ -172,6 +199,8 @@ def test_query_candidates_counts_all_matching_images_per_identity():
 
 
 def test_query_candidates_similarity_band_drops_weak_alternatives():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
@@ -187,6 +216,8 @@ def test_query_candidates_similarity_band_drops_weak_alternatives():
 
 
 def test_query_candidates_similarity_band_keeps_competitive_alternatives():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
@@ -201,6 +232,8 @@ def test_query_candidates_similarity_band_keeps_competitive_alternatives():
 
 
 def test_query_candidates_respects_top_k():
+    from id_dedup.dedup.services import _query_candidates
+
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [mock_image_row(identity_id=i, display_name=f"Person{i}", distance=0.05 * i)

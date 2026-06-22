@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import pathlib
+from urllib.parse import urlparse
 
-import numpy as np
 import django
+import numpy as np
 import pytest
 from django.conf import settings
 
@@ -15,15 +17,48 @@ _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
 def pytest_configure(config):
     if not settings.configured:
+        parsed = urlparse(os.environ["DATABASE_URL"])
         settings.configure(
             DATABASES={
                 "default": {
-                    "ENGINE": "django.db.backends.sqlite3",
-                    "NAME": ":memory:",
-                }
+                    "ENGINE": "django.db.backends.postgresql",
+                    "NAME": parsed.path.lstrip("/"),
+                    "USER": parsed.username,
+                    "PASSWORD": parsed.password,
+                    "HOST": parsed.hostname,
+                    "PORT": parsed.port,
+                },
             },
-            INSTALLED_APPS=["id_dedup.dedup"],
+            INSTALLED_APPS=[
+                "django.contrib.contenttypes",
+                "django.contrib.auth",
+                "django.contrib.sessions",
+                "django.contrib.messages",
+                "django.contrib.staticfiles",
+                "id_dedup.dedup",
+            ],
+            MIDDLEWARE=[
+                "django.contrib.sessions.middleware.SessionMiddleware",
+                "django.contrib.auth.middleware.AuthenticationMiddleware",
+                "django.contrib.messages.middleware.MessageMiddleware",
+            ],
             DEFAULT_AUTO_FIELD="django.db.models.BigAutoField",
+            ROOT_URLCONF="id_dedup.urls",
+            TEMPLATES=[
+                {
+                    "BACKEND": "django.template.backends.django.DjangoTemplates",
+                    "DIRS": [],
+                    "APP_DIRS": True,
+                    "OPTIONS": {
+                        "context_processors": [
+                            "django.template.context_processors.request",
+                            "django.contrib.auth.context_processors.auth",
+                            "django.contrib.messages.context_processors.messages",
+                        ],
+                    },
+                },
+            ],
+            SESSION_ENGINE="django.contrib.sessions.backends.db",
         )
         django.setup()
 
@@ -44,6 +79,7 @@ def _person_dirs() -> list[pathlib.Path]:
 # Image-level fixture — one test invocation per image file
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(
     params=_all_image_paths(),
     ids=lambda p: p.relative_to(FACES_DIR).as_posix(),
@@ -55,6 +91,7 @@ def image_path(request) -> pathlib.Path:
 # ---------------------------------------------------------------------------
 # Person-level fixtures — one test invocation per person directory
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(
     params=_person_dirs(),
@@ -73,6 +110,7 @@ def person_images(person_dir) -> list[pathlib.Path]:
 # Session-scoped cluster result — computed once across the whole test run
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def all_image_paths() -> list[pathlib.Path]:
     return _all_image_paths()
@@ -87,6 +125,7 @@ def cluster_result(all_image_paths) -> ClusterResult:
 # ---------------------------------------------------------------------------
 # Synthetic ClusterResult for split() unit tests (no real images needed)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def splittable_result() -> ClusterResult:

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 from pgvector.django import CosineDistance
 
-from .pipeline import ClusterMember, ClusterResult
 from .models import Image
+from .pipeline import ClusterMember, ClusterResult
 
 
 @dataclass
@@ -15,11 +15,13 @@ class IdentityMatch:
     display_name: str
     similarity: float  # cosine similarity in [0, 1]; higher = better
     matched_image_count: int  # how many of this identity's images were near the centroid
+    image_url: str | None = None
 
 
 @dataclass
 class ClusterProposal:
-    """Proposed identity matches for a single cluster (or singleton).
+    """
+    Proposed identity matches for a single cluster (or singleton).
 
     proposed_matches is ranked descending by similarity.
     An empty list means no identity in the DB crossed min_similarity — likely a new person.
@@ -54,7 +56,8 @@ def _query_candidates(
     min_similarity: float,
     similarity_band: float,
 ) -> list[IdentityMatch]:
-    """Find the top_k closest existing identities to a centroid.
+    """
+    Find the top_k closest existing identities to a centroid.
 
     Fetches all assigned images within min_similarity, collapses to one entry
     per identity (best similarity + count of matching images), then applies
@@ -77,17 +80,18 @@ def _query_candidates(
         sim = 1.0 - float(img.distance)
         pk = img.identity_id
         if pk not in best:
+            img_url = img.source_image.url if img.source_image else None
             best[pk] = IdentityMatch(
                 identity_id=pk,
                 display_name=img.identity.display_name,
                 similarity=sim,
                 matched_image_count=1,
+                image_url=img_url,
             )
         else:
             entry = best[pk]
             entry.matched_image_count += 1
-            if sim > entry.similarity:
-                entry.similarity = sim
+            entry.similarity = max(entry.similarity, sim)
 
     ranked = sorted(best.values(), key=lambda m: m.similarity, reverse=True)[:top_k]
 
@@ -105,7 +109,8 @@ def propose_for_members(
     min_similarity: float = 0.6,
     similarity_band: float = 0.1,
 ) -> ClusterProposal:
-    """Propose identity matches for an arbitrary set of ClusterMembers.
+    """
+    Propose identity matches for an arbitrary set of ClusterMembers.
 
     This is the primary entry point for both automatic clustering results and
     manual re-groupings (e.g. when the user splits a cluster in the UI and
@@ -125,19 +130,16 @@ def propose_matches(
     min_similarity: float = 0.6,
     similarity_band: float = 0.1,
 ) -> list[ClusterProposal]:
-    """Stage 2 — match every confirmed cluster against existing DB identities.
+    """
+    Stage 2 — match every confirmed cluster against existing DB identities.
 
     Call this once, after the user has finished editing the ClusterResult.
     Each group is queried as a unit (one DB call per cluster).
     Singletons are each queried individually.
     Returns proposals: groups first (ascending by label), then singletons.
     """
-    proposals: list[ClusterProposal] = []
-
-    for _label, members in sorted(result.groups.items()):
-        proposals.append(propose_for_members(members, top_k, min_similarity, similarity_band))
-
-    for member in result.singletons:
-        proposals.append(propose_for_members([member], top_k, min_similarity, similarity_band))
+    proposals = [propose_for_members(members, top_k, min_similarity, similarity_band) for _label, members in sorted(result.groups.items())]
+    proposals.extend(propose_for_members([member], top_k, min_similarity, similarity_band) for member in result.singletons)
 
     return proposals
+

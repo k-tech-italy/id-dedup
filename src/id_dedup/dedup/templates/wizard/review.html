@@ -1,0 +1,195 @@
+{% extends "wizard/base.html" %}
+{% block title %}Review Clusters{% endblock %}
+{% block content %}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12"
+      x-data="clusterReview()">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-xl font-semibold">Review Clusters</h1>
+      <p class="text-sm text-gray-400 mt-0.5">{{ group_count }} auto-generated clusters from {{ batch_name|default:"batch" }}</p>
+    </div>
+  </div>
+
+  <!-- cluster grid -->
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" id="clusterGrid">
+    {% for label, members in groups %}
+    <div class="cluster-card bg-gray-900 border border-gray-800 rounded-xl p-3 fade-in"
+         data-cluster="{{ label }}"
+         data-count="{{ members|length }}">
+      <div class="cluster-imgs grid grid-cols-{% if members|length|divisibleby:"3" %}3{% else %}2{% endif %} gap-1 mb-2
+                  {% if members|length == 1 %}max-w-[50%]{% endif %}"
+           data-cluster="{{ label }}">
+        {% for member in members %}
+        <div class="bg-gray-800 rounded-lg aspect-square overflow-hidden"
+             data-file="{{ member.file.name }}">
+          <img src="{% url 'wizard:review_image' path=member.file.name %}"
+               alt="{{ member.file.stem }}"
+               class="w-full h-full object-cover"
+               loading="lazy" />
+        </div>
+        {% endfor %}
+      </div>
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-sm font-medium">Cluster {{ label }}</span>
+          <span class="text-xs text-gray-500 ml-1.5 cluster-count">{{ members|length }} image{{ members|length|pluralize }}</span>
+        </div>
+        <button @click="openSplit('{{ label }}')"
+                class="text-xs text-gray-400 border border-gray-700 rounded-md px-2 py-1 hover:bg-gray-800 hover:text-gray-200 transition-colors">
+          Split
+        </button>
+      </div>
+    </div>
+    {% empty %}
+    <div class="col-span-full text-center py-16 text-gray-500">
+      No clusters to display.
+    </div>
+    {% endfor %}
+
+    {% for member in singletons %}
+    <div class="cluster-card bg-gray-900 border border-gray-800 rounded-xl p-3 fade-in"
+         data-cluster="-1"
+         data-count="1">
+      <div class="cluster-imgs mb-2 max-w-[50%]"
+           data-cluster="-1">
+        <div class="bg-gray-800 rounded-lg aspect-square overflow-hidden"
+             data-file="{{ member.file.name }}">
+          <img src="{% url 'wizard:review_image' path=member.file.name %}"
+               alt="{{ member.file.stem }}"
+               class="w-full h-full object-cover"
+               loading="lazy" />
+        </div>
+      </div>
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-sm font-medium">Singleton</span>
+          <span class="text-xs text-gray-500 ml-1.5">1 image</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ====== Split Drawer ====== -->
+  <div id="splitDrawer"
+       class="mt-8 bg-gray-900 border border-gray-800 rounded-xl p-5 slide-up"
+       x-show="splitOpen"
+       x-cloak>
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-medium" x-text="'Split Cluster — ' + splitLabel + ' (' + splitImages.length + ' images)'"></h3>
+      <button @click="splitOpen = false" class="text-gray-500 hover:text-gray-300 transition-colors">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="text-sm text-gray-400 mb-4">Select images that don't belong in this cluster, then click <strong>Split Selected</strong> to move them into a new cluster.</p>
+    <div class="flex flex-wrap gap-4 mb-5" id="splitDrawerImages">
+      <template x-for="(img, idx) in splitImages" :key="idx">
+        <div class="flex flex-col items-center gap-1.5">
+          <label class="img-checkbox-label cursor-pointer">
+            <input type="checkbox" class="img-checkbox sr-only"
+                   :value="img.file"
+                   x-model="splitChecked" />
+            <div class="bg-gray-800 w-24 h-24 rounded-lg overflow-hidden"
+                 :class="{ 'opacity-60 outline-2 outline-cyan-400 outline-offset-2': splitChecked.includes(img.file) }">
+              <img :src="img.imgUrl" :alt="img.stem" class="w-full h-full object-cover" />
+            </div>
+          </label>
+          <span class="text-[11px] text-gray-500" x-text="img.short"></span>
+        </div>
+      </template>
+    </div>
+    <div class="flex items-center gap-3">
+      <button @click="confirmSplit()"
+              id="splitConfirmBtn"
+              class="bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              :disabled="splitChecked.length === 0">
+        Split Selected
+      </button>
+      <button @click="splitOpen = false" class="text-sm text-gray-400 border border-gray-700 rounded-lg px-4 py-2 hover:bg-gray-800 transition-colors">Cancel</button>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div class="flex items-center justify-between mt-8 pt-4 border-t border-gray-800">
+    <div></div>
+    <a href="{% url 'wizard:review_save' %}"
+       class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors">
+      Proceed to Adjudication →
+    </a>
+  </div>
+</main>
+{% endblock %}
+
+{% block extrahead %}
+<script>
+  Alpine.data('clusterReview', () => ({
+    splitOpen: false,
+    splitLabel: '',
+    splitImages: [],
+    splitChecked: [],
+
+    openSplit(label) {
+      this.splitLabel = label
+      this.splitChecked = []
+      this.splitImages = []
+      const imgBase = '{% url "wizard:review_image" path="x" %}'.slice(0, -1)
+      // collect image filenames from the cluster card
+      const card = document.querySelector(`[data-cluster="${label}"]`)
+      if (!card) return
+      card.querySelectorAll('[data-file]').forEach(el => {
+        const file = el.dataset.file
+        const parts = file.replace(/\\/g, '/').split('/')
+        const name = parts.pop() || ''
+        this.splitImages.push({ file, stem: name, short: name.length > 12 ? name.slice(0, 10) + '…' : name, imgUrl: imgBase + encodeURIComponent(name) })
+      })
+      this.splitOpen = true
+    },
+
+    confirmSplit() {
+      if (this.splitChecked.length === 0) return
+      const grid = document.getElementById('clusterGrid')
+      grid.addEventListener('htmx:afterSwap', () => {
+        this.splitOpen = false
+      }, { once: true })
+      htmx.ajax('POST', '{% url "wizard:split" %}', {
+        target: '#clusterGrid',
+        swap: 'innerHTML',
+        values: {
+          csrfmiddlewaretoken: '{{ csrf_token }}',
+          cluster_label: this.splitLabel,
+          files: JSON.stringify(this.splitChecked),
+        },
+      })
+    },
+  }))
+
+  function initSortable() {
+    document.querySelectorAll('.cluster-imgs').forEach(el => {
+      new Sortable(el, {
+        group: 'clusters',
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        onEnd(evt) {
+          const data = {
+            csrfmiddlewaretoken: '{{ csrf_token }}',
+            file: evt.item.dataset.file,
+            cluster_label: evt.from.closest('[data-cluster]')?.dataset.cluster,
+            to_cluster: evt.to.closest('[data-cluster]')?.dataset.cluster,
+          }
+          htmx.ajax('POST', '{% url "wizard:split" %}', {
+            target: '#clusterGrid',
+            swap: 'innerHTML',
+            values: data,
+          })
+        },
+      })
+    })
+  }
+
+  document.addEventListener('DOMContentLoaded', initSortable)
+  document.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target.id === 'clusterGrid') initSortable()
+  })
+</script>
+{% endblock %}
