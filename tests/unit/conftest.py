@@ -4,18 +4,16 @@ import pathlib
 
 import pytest
 
-from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
-from id_dedup.dedup.services import IdentityMatch
-from tests.unit.helpers import unit_vector
-
-
 # ---------------------------------------------------------------------------
 # Fixtures — services layer (synthetic data, no real images, no DB)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
-def unit_member() -> ClusterMember:
-    """A single ClusterMember with a unit-normalised embedding."""
+def unit_member():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from tests.unit.helpers import unit_vector
+
     return ClusterMember(
         file=pathlib.Path("examples/person1/photo_1.jpg"),
         embedding=unit_vector(seed=0),
@@ -23,8 +21,10 @@ def unit_member() -> ClusterMember:
 
 
 @pytest.fixture
-def two_member_group() -> list[ClusterMember]:
-    """Two ClusterMembers for testing centroid computation."""
+def two_member_group():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from tests.unit.helpers import unit_vector
+
     return [
         ClusterMember(file=pathlib.Path("examples/person1/photo_1.jpg"), embedding=unit_vector(seed=0)),
         ClusterMember(file=pathlib.Path("examples/person1/photo_2.jpg"), embedding=unit_vector(seed=1)),
@@ -32,8 +32,10 @@ def two_member_group() -> list[ClusterMember]:
 
 
 @pytest.fixture
-def cluster_result_with_groups() -> ClusterResult:
-    """A ClusterResult with two groups and one singleton for propose_matches tests."""
+def cluster_result_with_groups():
+    from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
+    from tests.unit.helpers import unit_vector
+
     result = ClusterResult()
     result.clusters[0] = [
         ClusterMember(file=pathlib.Path("g0_a.jpg"), embedding=unit_vector(seed=10)),
@@ -50,8 +52,9 @@ def cluster_result_with_groups() -> ClusterResult:
 
 
 @pytest.fixture
-def strong_and_weak_match() -> list[IdentityMatch]:
-    """Strong (0.9) and weak (0.6) match — band filter should drop the weak one."""
+def strong_and_weak_match():
+    from id_dedup.dedup.services import IdentityMatch
+
     return [
         IdentityMatch(identity_id=1, display_name="Alice", similarity=0.9, matched_image_count=3),
         IdentityMatch(identity_id=2, display_name="Bob", similarity=0.6, matched_image_count=1),
@@ -59,8 +62,9 @@ def strong_and_weak_match() -> list[IdentityMatch]:
 
 
 @pytest.fixture
-def close_matches() -> list[IdentityMatch]:
-    """Two matches within 0.05 of each other — both should survive the band filter."""
+def close_matches():
+    from id_dedup.dedup.services import IdentityMatch
+
     return [
         IdentityMatch(identity_id=1, display_name="Alice", similarity=0.88, matched_image_count=2),
         IdentityMatch(identity_id=2, display_name="Bob", similarity=0.85, matched_image_count=1),

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-import pathlib
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 from sklearn.cluster import DBSCAN
+
+if TYPE_CHECKING:
+    import pathlib
+
 
 # Lazy singleton — avoids downloading/loading the model at import time
 _app: FaceAnalysis | None = None
@@ -40,7 +44,8 @@ class ClusterMember:
 
 @dataclass
 class ClusterResult:
-    """Stage-1 result: embeddings and DBSCAN groupings, no DB interaction.
+    """
+    Stage-1 result: embeddings and DBSCAN groupings, no DB interaction.
 
     Edit clusters freely (via split()) before passing to services.propose_matches(),
     which is the only place DB queries are made.
@@ -62,20 +67,28 @@ class ClusterResult:
         """All clusters except DBSCAN noise — each is a candidate Identity."""
         return {k: v for k, v in self.clusters.items() if k != -1}
 
-    def split(self, label: int, move: set[pathlib.Path]) -> int:
-        """Move a subset of files out of cluster `label` into a new cluster.
+    def split(self, label: int, move: set[pathlib.Path], to_cluster: int | None = None) -> int:
+        """
+        Move a subset of files out of cluster `label` into a new cluster.
 
         Use this during stage-1 review when a cluster appears to contain more
         than one person. The split is pure Python — no embeddings are recomputed
         and no DB queries are made.
 
-        If `move` contains a single file it is appended to the -1 (singletons)
+        When `to_cluster` is provided the files are placed in that cluster
+        (useful for drag-drop moves). When `to_cluster` equals `label` the call
+        is a no-op — nothing is mutated and the label is returned immediately.
+
+        If `to_cluster` is None a single file is appended to the -1 (singletons)
         bucket; two or more files are assigned a new positive label. Either way
         both groups receive individual ClusterProposals at stage 2.
 
-        Returns the label assigned to the split-off group (-1 or a new positive int).
+        Returns the label assigned to the moved group.
         Raises ValueError if `label` doesn't exist or none of `move` are in it.
         """
+        if to_cluster == label:
+            return label
+
         if label not in self.clusters:
             raise ValueError(f"No cluster with label {label}")
 
@@ -95,6 +108,10 @@ class ClusterResult:
         else:
             del self.clusters[label]
 
+        if to_cluster is not None:
+            self.clusters.setdefault(to_cluster, []).extend(moving)
+            return to_cluster
+
         if len(moving) == 1:
             self.clusters.setdefault(-1, []).append(moving[0])
             return -1
@@ -108,7 +125,8 @@ def cluster_dbscan(
     eps: float = 0.4,
     min_samples: int = 2,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """L2-normalise embeddings then run DBSCAN with cosine metric.
+    """
+    L2-normalise embeddings then run DBSCAN with cosine metric.
 
     Returns (labels, normalised_embeddings). normalised_embeddings are
     ready to store directly in Image.embedding (pgvector cosine index).
@@ -129,7 +147,8 @@ def process_images(
     eps: float = 0.4,
     min_samples: int = 2,
 ) -> ClusterResult:
-    """Stage 1 — extract embeddings and group by face similarity. No DB access.
+    """
+    Stage 1 — extract embeddings and group by face similarity. No DB access.
 
     Call ClusterResult.split() to adjust groupings before moving to stage 2.
     Pass the finalised ClusterResult to services.propose_matches() to run DB matching.

@@ -1,0 +1,137 @@
+{% extends "wizard/base.html" %}
+{% block title %}Adjudication{% endblock %}
+{% block content %}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12"
+     x-data="adjudication()">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-xl font-semibold">Adjudication</h1>
+      <p class="text-sm text-gray-400 mt-0.5">Match each cluster to an existing identity</p>
+    </div>
+  </div>
+
+  <!-- progress -->
+  <div class="flex items-center gap-3 mb-6">
+    <span class="text-sm text-gray-400" id="adjudicationStep">Cluster {{ adj_index|add:1 }} of {{ total }}</span>
+    <div class="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+      <div class="progress-bar h-full bg-sky-600 rounded-full" id="progressFill" style="width:{{ progress_pct }}%"></div>
+    </div>
+    <span class="text-sm text-gray-500" id="progressPct">{{ progress_pct }}%</span>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-5">
+
+    <!-- ====== Current Cluster ====== -->
+    <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h3 class="text-sm font-medium text-gray-400 mb-1">Current Cluster</h3>
+      <p class="text-lg font-semibold mb-3">{{ cluster_label }}</p>
+      <div class="grid grid-cols-2 gap-2" id="adjClusterImages">
+        {% for member in members %}
+        <div class="bg-gray-800 rounded-lg aspect-[4/3] overflow-hidden">
+          <img src="{% url 'wizard:review_image' path=member.file.name %}"
+               alt="{{ member.file.stem }}"
+               class="w-full h-full object-cover"
+               loading="lazy" />
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- ====== Top-K Matches ====== -->
+    <div class="lg:col-span-3 bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div id="matchesContainer">
+        {% if is_new_identity %}
+          {% include "wizard/_no_matches.html" %}
+        {% else %}
+          {% include "wizard/_matches_list.html" %}
+        {% endif %}
+      </div>
+
+      <!-- search + new identity -->
+      <div class="mt-4 pt-4 border-t border-gray-800">
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+          </svg>
+          <input type="text"
+                 placeholder="Search all identities..."
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-sky-500/50 transition-colors"
+                 hx-get="{% url 'wizard:search' %}"
+                 hx-trigger="keyup changed delay:300ms"
+                 hx-target="#searchResults"
+                 hx-swap="innerHTML"
+                 name="q" />
+        </div>
+        <div id="searchResults" class="mt-2 space-y-1"></div>
+        <button @click="showNewIdentity = true"
+                class="mt-2 w-full text-sm text-gray-400 border border-dashed border-gray-700 rounded-lg px-3 py-2 hover:bg-gray-800 hover:text-gray-200 transition-colors">
+          + Create New Identity
+        </button>
+
+        <!-- new identity inline form -->
+        <div x-show="showNewIdentity" x-cloak class="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <label class="block text-sm text-gray-400 mb-2">Display Name</label>
+          <input type="text" x-model="newIdentityName"
+                 placeholder="Enter name..."
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-sky-500/50 transition-colors mb-3" />
+          <div class="flex items-center gap-2">
+            <button @click="confirmNewIdentity()"
+                    class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium rounded-lg px-4 py-2 transition-colors"
+                    :disabled="!newIdentityName.trim()">
+              Create &amp; Assign
+            </button>
+            <button @click="showNewIdentity = false" class="text-xs text-gray-400 hover:text-gray-300 transition-colors">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- footer nav -->
+  <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-800">
+    <a href="{% url 'wizard:adjudication_prev' %}"
+       class="text-sm text-gray-400 border border-gray-700 rounded-lg px-4 py-2 hover:bg-gray-800 hover:text-gray-200 transition-colors {% if adj_index == 0 %}disabled opacity-30 pointer-events-none{% endif %}">
+      ← Previous
+    </a>
+    <a href="{% url 'wizard:adjudication_next' %}"
+       class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2 transition-colors">
+      Next →
+    </a>
+  </div>
+</main>
+{% endblock %}
+
+{% block extrahead %}
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('adjudication', () => ({
+      showNewIdentity: false,
+      newIdentityName: '',
+
+      assignTo(identityId) {
+        htmx.ajax('POST', '{% url "wizard:assign" %}', {
+          target: '#wizard-content',
+          swap: 'innerHTML',
+          values: {
+            csrfmiddlewaretoken: '{{ csrf_token }}',
+            identity_id: identityId,
+          },
+        })
+      },
+
+      confirmNewIdentity() {
+        const name = this.newIdentityName.trim()
+        if (!name) return
+        htmx.ajax('POST', '{% url "wizard:new_identity" %}', {
+          target: '#wizard-content',
+          swap: 'innerHTML',
+          values: {
+            csrfmiddlewaretoken: '{{ csrf_token }}',
+            display_name: name,
+          },
+        })
+      },
+    }))
+  })
+</script>
+{% endblock %}

@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 import warnings
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -59,7 +60,7 @@ ROOT_URLCONF = "id_dedup.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -78,10 +79,15 @@ WSGI_APPLICATION = "id_dedup.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+parsed = urlparse(os.environ["DATABASE_URL"])
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parsed.path.lstrip("/"),
+        "USER": parsed.username,
+        "PASSWORD": parsed.password,
+        "HOST": parsed.hostname,
+        "PORT": parsed.port,
     },
 }
 
@@ -121,7 +127,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = "static/"
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
 STATIC_ROOT = BASE_DIR.parent.parent / "~static"
+
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "media/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

@@ -7,10 +7,10 @@ import pytest
 
 from id_dedup.dedup.pipeline import extract_embedding, process_images
 
-
 # ---------------------------------------------------------------------------
 # extract_embedding
 # ---------------------------------------------------------------------------
+
 
 def test_extract_embedding_returns_512d_array(image_path):
     emb = extract_embedding(image_path)
@@ -32,16 +32,13 @@ def test_extract_embedding_missing_file_returns_none():
 # process_images
 # ---------------------------------------------------------------------------
 
+
 def test_same_person_images_in_one_cluster(person_images, cluster_result):
     """All photos of the same person must land in the same cluster label."""
     if len(person_images) < 2:
         pytest.skip("need at least 2 photos per person to test grouping")
 
-    file_to_label = {
-        m.file: label
-        for label, members in cluster_result.clusters.items()
-        for m in members
-    }
+    file_to_label = {m.file: label for label, members in cluster_result.clusters.items() for m in members}
     labels = {file_to_label[p] for p in person_images if p in file_to_label}
     assert len(labels) == 1, f"Photos of one person spread across clusters {labels}"
 
@@ -56,7 +53,7 @@ def test_different_people_in_different_clusters(cluster_result):
 
     persons = list(person_to_labels.items())
     for i, (name_a, labels_a) in enumerate(persons):
-        for name_b, labels_b in persons[i + 1:]:
+        for name_b, labels_b in persons[i + 1 :]:
             shared = labels_a & labels_b
             assert not shared, f"{name_a} and {name_b} share cluster(s) {shared}"
 
@@ -92,6 +89,7 @@ def test_embeddings_are_l2_normalised(cluster_result):
 # ---------------------------------------------------------------------------
 # ClusterResult.split
 # ---------------------------------------------------------------------------
+
 
 def test_split_single_file_joins_singletons(splittable_result):
     target = splittable_result.clusters[0][0].file
