@@ -13,10 +13,10 @@
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
           <span class="font-medium text-sm">{{ match.display_name }}</span>
-          <span class="text-sm font-semibold text-emerald-400">{{ match.similarity|floatformat:0 }}%</span>
+          <span class="text-sm font-semibold text-emerald-400">{% widthratio match.similarity 1 100 %}%</span>
         </div>
         <div class="mt-1.5 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-          <div class="h-full bg-emerald-500 rounded-full" style="width:{{ match.similarity|floatformat:0 }}%"></div>
+          <div class="h-full bg-emerald-500 rounded-full" style="width:{% widthratio match.similarity 1 100 %}%"></div>
         </div>
         <div class="text-xs text-gray-500 mt-1.5">
           {{ match.matched_image_count }} existing image{{ match.matched_image_count|pluralize }}
