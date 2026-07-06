@@ -132,7 +132,7 @@ STATICFILES_DIRS = [
 ]
 STATIC_ROOT = BASE_DIR.parent.parent / "~static"
 
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = BASE_DIR.parent.parent / "~media"
 MEDIA_URL = "media/"
 
 # Default primary key field type
