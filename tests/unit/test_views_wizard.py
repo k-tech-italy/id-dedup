@@ -163,8 +163,22 @@ class TestWizardAdjudication:
         assert resp.url == reverse("wizard:complete")
 
     @pytest.mark.django_db(transaction=True)
-    def test_next_advances_index(self, client):
-        _setup_proposals(client, _proposals(3), adj_index=0)
+    def test_next_assigned_advances(self, client):
+        proposals = _proposals(3)
+        _setup_proposals(client, proposals, adj_index=1)
+        session = client.session
+        session["wizard_assignments"] = {
+            "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Test", "is_new": False},
+        }
+        session.save()
+        resp = client.get(reverse("wizard:adjudication_next"))
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:adjudication")
+        assert client.session["wizard_adj_index"] == 2
+
+    @pytest.mark.django_db(transaction=True)
+    def test_next_unassigned_redirects_back(self, client):
+        _setup_proposals(client, _proposals(3), adj_index=1)
         resp = client.get(reverse("wizard:adjudication_next"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:adjudication")
@@ -172,7 +186,13 @@ class TestWizardAdjudication:
 
     @pytest.mark.django_db(transaction=True)
     def test_next_past_last_redirects_complete(self, client):
-        _setup_proposals(client, _proposals(2), adj_index=1)
+        proposals = _proposals(2)
+        _setup_proposals(client, proposals, adj_index=1)
+        session = client.session
+        session["wizard_assignments"] = {
+            "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Test", "is_new": False},
+        }
+        session.save()
         resp = client.get(reverse("wizard:adjudication_next"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:complete")
@@ -213,7 +233,78 @@ class TestWizardAdjudication:
         assert resp.url == reverse("wizard:complete")
 
     @pytest.mark.django_db(transaction=True)
-    def test_new_identity_creates_and_advances(self, client):
+    def test_assign_with_registry_identity(self, client):
+        """Assigning to a session-only identity resolves display_name from registry and is_new=True."""
+        proposals = _proposals(3)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        registry_id = str(uuid.uuid4())
+        session = client.session
+        session["wizard_new_identities"] = {registry_id: "Session Person"}
+        session.save()
+
+        resp = client.post(reverse("wizard:assign"), {"identity_id": registry_id})
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:adjudication")
+
+        assignment = client.session["wizard_assignments"]["0"]
+        assert assignment["identity_id"] == registry_id
+        assert assignment["display_name"] == "Session Person"
+        assert assignment["is_new"] is True
+
+    @pytest.mark.django_db(transaction=True)
+    def test_assign_with_db_identity_fallback(self, client):
+        """Assigning to a DB identity not in proposed_matches resolves display_name via DB lookup."""
+        proposals = _proposals(3)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        identity = Identity.objects.create(display_name="DB Person")
+
+        resp = client.post(reverse("wizard:assign"), {"identity_id": str(identity.pk)})
+        assert resp.status_code == 302
+
+        assignment = client.session["wizard_assignments"]["0"]
+        assert assignment["identity_id"] == str(identity.pk)
+        assert assignment["display_name"] == "DB Person"
+        assert assignment["is_new"] is False
+
+    @pytest.mark.django_db(transaction=True)
+    def test_assign_garbage_collects_previous_new_identity(self, client):
+        """Reassigning a cluster pops the old is_new identity from the registry."""
+        proposals = _proposals(3)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        old_id = str(uuid.uuid4())
+        session = client.session
+        session["wizard_assignments"] = {
+            "0": {"identity_id": old_id, "display_name": "Old Person", "is_new": True},
+        }
+        session["wizard_new_identities"] = {old_id: "Old Person"}
+        session.save()
+
+        new_id = str(proposals[0].proposed_matches[0].identity_id)
+        resp = client.post(reverse("wizard:assign"), {"identity_id": new_id})
+        assert resp.status_code == 302
+
+        assert old_id not in client.session["wizard_new_identities"]
+
+    @pytest.mark.django_db(transaction=True)
+    def test_assign_marks_existing_as_not_new(self, client):
+        """Assigning a proposed match that already exists in DB sets is_new=False."""
+        proposals = _proposals(3)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        match = proposals[0].proposed_matches[0]
+        Identity.objects.create(pk=match.identity_id, display_name=match.display_name)
+
+        resp = client.post(reverse("wizard:assign"), {"identity_id": str(match.identity_id)})
+        assert resp.status_code == 302
+
+        assert client.session["wizard_assignments"]["0"]["is_new"] is False
+
+    @pytest.mark.django_db(transaction=True)
+    def test_new_identity_is_session_only(self, client):
+        """new_identity does not create a DB record — identity is stored in session registry."""
         _setup_proposals(client, _proposals(3), adj_index=0)
 
         resp = client.post(reverse("wizard:new_identity"), {"display_name": "New Person"})
@@ -221,9 +312,31 @@ class TestWizardAdjudication:
         assert resp.url == reverse("wizard:adjudication")
         assert client.session["wizard_adj_index"] == 1
 
-        identity = Identity.objects.get(display_name="New Person")
-        assert client.session["wizard_assignments"]["0"]["identity_id"] == str(identity.pk)
-        assert client.session["wizard_assignments"]["0"]["is_new"] is True
+        assert not Identity.objects.filter(display_name="New Person").exists()
+
+        assignment = client.session["wizard_assignments"]["0"]
+        assert assignment["is_new"] is True
+        assert assignment["display_name"] == "New Person"
+        assert assignment["identity_id"] in client.session["wizard_new_identities"]
+
+    @pytest.mark.django_db(transaction=True)
+    def test_new_identity_garbage_collects_previous(self, client):
+        """Creating a new identity for a previously-assigned cluster cleans up old registry entry."""
+        proposals = _proposals(3)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        old_id = str(uuid.uuid4())
+        session = client.session
+        session["wizard_assignments"] = {
+            "0": {"identity_id": old_id, "display_name": "Old Person", "is_new": True},
+        }
+        session["wizard_new_identities"] = {old_id: "Old Person"}
+        session.save()
+
+        resp = client.post(reverse("wizard:new_identity"), {"display_name": "Replacement"})
+        assert resp.status_code == 302
+
+        assert old_id not in client.session["wizard_new_identities"]
 
     @pytest.mark.django_db(transaction=True)
     def test_search_returns_results(self, client):
@@ -249,6 +362,46 @@ class TestWizardAdjudication:
         assert resp.status_code == 200
         assert b"No identities found" in resp.content
 
+    @pytest.mark.django_db(transaction=True)
+    def test_search_includes_session_identities(self, client):
+        Identity.objects.create(display_name="Alice")
+
+        session = client.session
+        session["wizard_new_identities"] = {
+            str(uuid.uuid4()): "Session Person",
+            str(uuid.uuid4()): "Another Session",
+        }
+        session.save()
+
+        resp = client.get(reverse("wizard:search"), {"q": "Session"})
+        content = resp.content.decode()
+        assert "Session Person" in content
+        assert "Another Session" in content
+        assert '(new)' in content
+
+    @pytest.mark.django_db(transaction=True)
+    def test_search_deduplicates_session_and_db(self, client):
+        Identity.objects.create(display_name="Alice")
+
+        session = client.session
+        session["wizard_new_identities"] = {str(uuid.uuid4()): "Alice"}
+        session.save()
+
+        resp = client.get(reverse("wizard:search"), {"q": "Ali"})
+        content = resp.content.decode()
+        assert content.count("Alice") == 1
+
+    @pytest.mark.django_db(transaction=True)
+    def test_search_still_shows_no_results_when_only_db_empty(self, client):
+        """If DB has no results and session registry has no matches, show no results."""
+        session = client.session
+        session["wizard_new_identities"] = {str(uuid.uuid4()): "Alice"}
+        session.save()
+
+        resp = client.get(reverse("wizard:search"), {"q": "NonexistentXYZ"})
+        assert resp.status_code == 200
+        assert b"No identities found" in resp.content
+
 
 # ---------------------------------------------------------------------------
 # Complete
@@ -257,12 +410,12 @@ class TestWizardAdjudication:
 class TestWizardComplete:
     @pytest.mark.django_db(transaction=True)
     def test_complete_shows_summary(self, client):
-        _setup_proposals(client, _proposals(4), adj_index=0)
+        _setup_proposals(client, _proposals(2), adj_index=0)
+        identity = Identity.objects.create(display_name="Alice")
         session = client.session
         session["wizard_assignments"] = {
-            "0": {"identity_id": "1", "display_name": "Alice", "is_new": False},
-            "1": {"identity_id": "2", "display_name": "Bob", "is_new": False},
-            "2": {"identity_id": "3", "display_name": "New Person", "is_new": True},
+            "0": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
+            "1": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
         }
         session.save()
 
@@ -271,10 +424,68 @@ class TestWizardComplete:
         assert b"Complete" in resp.content
 
     @pytest.mark.django_db(transaction=True)
+    def test_complete_redirects_to_first_unassigned(self, client):
+        _setup_proposals(client, _proposals(4), adj_index=0)
+        session = client.session
+        session["wizard_assignments"] = {
+            "0": {"identity_id": "1", "display_name": "A", "is_new": False},
+            "2": {"identity_id": "3", "display_name": "C", "is_new": False},
+        }
+        session.save()
+
+        resp = client.get(reverse("wizard:complete"))
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:adjudication")
+        assert client.session["wizard_adj_index"] == 1
+
+    @pytest.mark.django_db(transaction=True)
+    def test_complete_persists_new_identities(self, client):
+        proposals = _proposals(2)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        new_id = str(uuid.uuid4())
+        session = client.session
+        session["wizard_assignments"] = {
+            "0": {"identity_id": new_id, "display_name": "New Person", "is_new": True},
+            "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Existing", "is_new": False},
+        }
+        session["wizard_new_identities"] = {new_id: "New Person"}
+        session.save()
+
+        Identity.objects.create(pk=proposals[1].proposed_matches[0].identity_id, display_name="Existing")
+
+        resp = client.get(reverse("wizard:complete"))
+        assert resp.status_code == 200
+
+        assert Identity.objects.filter(pk=new_id, display_name="New Person").exists()
+
+    @pytest.mark.django_db(transaction=True)
+    def test_complete_skips_deleted_identities(self, client):
+        proposals = _proposals(2)
+        _setup_proposals(client, proposals, adj_index=0)
+
+        missing_id = str(uuid.uuid4())
+        session = client.session
+        session["wizard_assignments"] = {
+            "0": {"identity_id": missing_id, "display_name": "Ghost", "is_new": False},
+            "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Existing", "is_new": False},
+        }
+        session.save()
+
+        Identity.objects.create(pk=proposals[1].proposed_matches[0].identity_id, display_name="Existing")
+
+        resp = client.get(reverse("wizard:complete"))
+        assert resp.status_code == 200
+
+    @pytest.mark.django_db(transaction=True)
     def test_complete_clears_session(self, client):
         _setup_proposals(client, _proposals(2), adj_index=0)
+        identity = Identity.objects.create(display_name="Alice")
         session = client.session
-        session["wizard_assignments"] = {"0": {"identity_id": "1", "display_name": "A", "is_new": False}}
+        session["wizard_assignments"] = {
+            "0": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
+            "1": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
+        }
         session.save()
 
         client.get(reverse("wizard:complete"))

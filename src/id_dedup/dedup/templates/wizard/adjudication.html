@@ -93,10 +93,12 @@
        class="text-sm text-gray-400 border border-gray-700 rounded-lg px-4 py-2 hover:bg-gray-800 hover:text-gray-200 transition-colors {% if adj_index == 0 %}disabled opacity-30 pointer-events-none{% endif %}">
       ← Previous
     </a>
+    {% if is_current_assigned %}
     <a href="{% url 'wizard:adjudication_next' %}"
        class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2 transition-colors">
       Next →
     </a>
+    {% endif %}
   </div>
 </main>
 {% endblock %}
