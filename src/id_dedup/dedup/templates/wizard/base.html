@@ -118,6 +118,6 @@
       return {}
     }
   </script>
-  <script>Alpine.start()</script>
+  <script>if (!Alpine._started) Alpine.start()</script>
 </body>
 </html>
