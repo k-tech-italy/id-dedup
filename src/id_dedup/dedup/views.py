@@ -113,24 +113,39 @@ def _set_proposals(request: HttpRequest, proposals: list[ClusterProposal]) -> No
     request.session["wizard_proposals"] = [_serialize_proposal(p) for p in proposals]
 
 
+SESSION_PREFIX = "wizard_"
+
+
+def _get_from_session(request: HttpRequest, key: str, default=None):
+    return request.session.get(f"{SESSION_PREFIX}{key}", default)
+
+
+def _set_to_session(request: HttpRequest, key: str, value) -> None:
+    request.session[f"{SESSION_PREFIX}{key}"] = value
+
+
 def _get_adj_index(request: HttpRequest) -> int:
-    return request.session.get("wizard_adj_index", 0)
+    return _get_from_session(request, "adj_index", 0)
 
 
 def _set_adj_index(request: HttpRequest, index: int) -> None:
-    request.session["wizard_adj_index"] = index
+    _set_to_session(request, "adj_index", index)
 
 
 def _get_assignments(request: HttpRequest) -> dict:
-    return request.session.get("wizard_assignments", {})
+    return _get_from_session(request, "assignments", {})
 
 
 def _set_assignments(request: HttpRequest, assignments: dict) -> None:
-    request.session["wizard_assignments"] = assignments
+    _set_to_session(request, "assignments", assignments)
 
 
 def _get_batch_name(request: HttpRequest) -> str:
-    return request.session.get("wizard_batch_name", "")
+    return _get_from_session(request, "batch_name", "")
+
+
+def _get_new_identities(request: HttpRequest) -> dict:
+    return _get_from_session(request, "new_identities", {})
 
 
 def _clear_wizard(request: HttpRequest) -> None:
@@ -140,6 +155,7 @@ def _clear_wizard(request: HttpRequest) -> None:
         "wizard_adj_index",
         "wizard_assignments",
         "wizard_batch_name",
+        "wizard_new_identities",
     ]
     for k in keys:
         request.session.pop(k, None)
@@ -329,6 +345,7 @@ def review_save(request: HttpRequest) -> HttpResponse:
     _set_proposals(request, proposals)
     _set_adj_index(request, 0)
     _set_assignments(request, {})
+    _set_to_session(request, "new_identities", {})
 
     return redirect("wizard:adjudication")
 
@@ -368,6 +385,7 @@ def _adjudication_context(request: HttpRequest) -> dict | None:
         "members": proposal.members,
         "matches": proposal.proposed_matches,
         "is_new_identity": proposal.is_new_identity,
+        "is_current_assigned": str(adj_index) in assignments,
         "header_progress": f"{len(assignments)} of {total} assigned",
     }
 
@@ -390,6 +408,10 @@ def adjudication_next(request: HttpRequest) -> HttpResponse:
     proposals = _get_proposals(request)
     if proposals is None:
         return redirect("wizard:upload")
+
+    assignments = _get_assignments(request)
+    if str(adj_index) not in assignments:
+        return redirect("wizard:adjudication")
 
     if adj_index + 1 >= len(proposals):
         return redirect("wizard:complete")
@@ -425,13 +447,38 @@ def assign(request: HttpRequest) -> HttpResponse:
 
     proposal = proposals[adj_index]
     assignments = _get_assignments(request)
+    registry = _get_new_identities(request)
+
+    # Garbage collect: if this cluster had a previous is_new identity, pop it
+    prev = assignments.get(str(adj_index))
+    if prev and prev.get("is_new") and prev["identity_id"] != identity_id_str:
+        registry.pop(prev["identity_id"], None)
+        _set_to_session(request, "new_identities", registry)
+
+    # Resolve display name and is_new status
+    display_name = next(
+        (m.display_name for m in proposal.proposed_matches if str(m.identity_id) == identity_id_str),
+        None,
+    )
+
+    if display_name is not None:
+        is_new = not Identity.objects.filter(pk=identity_id_str).exists()
+    elif identity_id_str in registry:
+        display_name = registry[identity_id_str]
+        is_new = True
+    else:
+        try:
+            identity = Identity.objects.get(pk=identity_id_str)
+            display_name = identity.display_name
+            is_new = False
+        except Identity.DoesNotExist:
+            display_name = "Unknown"
+            is_new = True
+
     assignments[str(adj_index)] = {
         "identity_id": identity_id_str,
-        "display_name": next(
-            (m.display_name for m in proposal.proposed_matches if str(m.identity_id) == identity_id_str),
-            "Unknown",
-        ),
-        "is_new": False,
+        "display_name": display_name,
+        "is_new": is_new,
     }
     _set_assignments(request, assignments)
 
@@ -458,11 +505,21 @@ def new_identity(request: HttpRequest) -> HttpResponse:
     if adj_index >= len(proposals):
         return _hx_redirect(request, "wizard:complete")
 
-    identity = Identity.objects.create(display_name=display_name)
+    identity_id = str(uuid.uuid4())
 
+    registry = _get_new_identities(request)
     assignments = _get_assignments(request)
+
+    # Garbage collect: if this cluster had a previous is_new identity, pop it
+    prev = assignments.get(str(adj_index))
+    if prev and prev.get("is_new") and prev["identity_id"] != identity_id:
+        registry.pop(prev["identity_id"], None)
+
+    registry[identity_id] = display_name
+    _set_to_session(request, "new_identities", registry)
+
     assignments[str(adj_index)] = {
-        "identity_id": str(identity.pk),
+        "identity_id": identity_id,
         "display_name": display_name,
         "is_new": True,
     }
@@ -485,23 +542,37 @@ def search(request: HttpRequest) -> HttpResponse:
         return HttpResponse(content.encode())
 
     identities = list(Identity.objects.filter(display_name__icontains=q)[:10])
-    if not identities:
+    seen_names = {i.display_name.lower() for i in identities}
+
+    # Merge session registry entries not already in DB results
+    registry = _get_new_identities(request)
+    session_results = []
+    for rid, rname in registry.items():
+        if q.lower() in rname.lower() and rname.lower() not in seen_names:
+            seen_names.add(rname.lower())
+            session_results.append((rid, rname))
+
+    if not identities and not session_results:
         content = "<div class='text-xs text-gray-500 py-2'>No identities found.</div>"
         return HttpResponse(content.encode())
 
     url = reverse("wizard:assign")
     csrf_token = get_token(request)
-    lines = [
-        "<form method='post'"
-        f" hx-post='{url}' hx-target='#wizard-content' hx-swap='innerHTML'"
-        " class='block'>"
-        f"<input type='hidden' name='csrfmiddlewaretoken' value='{csrf_token}'>"
-        f"<input type='hidden' name='identity_id' value='{identity.pk}'>"
-        "<button type='submit'"
-        " class='w-full text-left block text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors'>"
-        f"{identity.display_name}</button></form>"
-        for identity in identities
-    ]
+
+    def _item(identity_id, display_name, badge=""):
+        return (
+            "<form method='post'"
+            f" hx-post='{url}' hx-target='#wizard-content' hx-swap='innerHTML'"
+            " class='block'>"
+            f"<input type='hidden' name='csrfmiddlewaretoken' value='{csrf_token}'>"
+            f"<input type='hidden' name='identity_id' value='{identity_id}'>"
+            "<button type='submit'"
+            " class='w-full text-left block text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors'>"
+            f"{display_name}{badge}</button></form>"
+        )
+
+    lines = [_item(str(i.pk), i.display_name) for i in identities]
+    lines += [_item(rid, rname, ' <span class="text-amber-400">(new)</span>') for rid, rname in session_results]
     html = "<div class='space-y-1 mt-2'>" + "".join(lines) + "</div>"
     return HttpResponse(html.encode())
 
@@ -515,6 +586,14 @@ def search(request: HttpRequest) -> HttpResponse:
 def complete(request: HttpRequest) -> HttpResponse:
     assignments = _get_assignments(request)
     proposals = _get_proposals(request) or []
+
+    # Guard: redirect to first unassigned cluster
+    if len(assignments) < len(proposals):
+        for i in range(len(proposals)):
+            if str(i) not in assignments:
+                _set_adj_index(request, i)
+                return redirect("wizard:adjudication")
+
     total = len(proposals)
     assigned = len(assignments)
     new_ids = 0
@@ -524,12 +603,17 @@ def complete(request: HttpRequest) -> HttpResponse:
         if assignment.get("is_new"):
             new_ids += 1
 
-        if adj_index >= len(proposals):
-            continue
+            identity, _ = Identity.objects.get_or_create(
+                pk=assignment["identity_id"],
+                defaults={"display_name": assignment["display_name"]},
+            )
+        else:
+            try:
+                identity = Identity.objects.get(pk=assignment["identity_id"])
+            except Identity.DoesNotExist:
+                continue
 
-        try:
-            identity = Identity.objects.get(pk=assignment["identity_id"])
-        except Identity.DoesNotExist:
+        if adj_index >= len(proposals):
             continue
 
         proposal = proposals[adj_index]
