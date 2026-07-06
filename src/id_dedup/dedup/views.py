@@ -205,7 +205,7 @@ def upload(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         files = request.FILES.getlist("images")
         if not files:
-            return render(request, "wizard/upload.html", {"error": "No files selected."})
+            return render(request, "wizard/upload.html", {"wizard_step": "upload", "error": "No files selected."})
 
         saved: list[pathlib.Path] = []
         tmpdir = pathlib.Path(tempfile.mkdtemp(prefix="id_dedup_"))
@@ -232,7 +232,7 @@ def upload(request: HttpRequest) -> HttpResponse:
             return response
         return redirect("wizard:review")
 
-    return render(request, "wizard/upload.html")
+    return render(request, "wizard/upload.html", {"wizard_step": "upload"})
 
 
 # ---------------------------------------------------------------------------

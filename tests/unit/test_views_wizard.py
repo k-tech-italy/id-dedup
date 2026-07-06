@@ -70,12 +70,14 @@ class TestWizardUpload:
     def test_get_returns_200(self, client):
         resp = client.get(reverse("wizard:upload"))
         assert resp.status_code == 200
+        assert resp.context["wizard_step"] == "upload"
         assert b"Upload" in resp.content
 
     @pytest.mark.django_db(transaction=True)
     def test_post_without_files_stays_on_upload(self, client):
         resp = client.post(reverse("wizard:upload"), {})
         assert resp.status_code == 200
+        assert resp.context["wizard_step"] == "upload"
         assert b"Upload" in resp.content
 
 
