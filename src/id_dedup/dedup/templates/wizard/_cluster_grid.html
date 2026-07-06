@@ -1,3 +1,4 @@
+{% if groups or singletons %}
 {% for label, members in groups %}
 <div class="cluster-card bg-gray-900 border border-gray-800 rounded-xl p-3 fade-in"
      data-cluster="{{ label }}"
@@ -26,10 +27,6 @@
     </button>
   </div>
 </div>
-{% empty %}
-<div class="col-span-full text-center py-16 text-gray-500">
-  No clusters to display.
-</div>
 {% endfor %}
 
 {% for member in singletons %}
@@ -54,3 +51,8 @@
   </div>
 </div>
 {% endfor %}
+{% else %}
+<div class="col-span-full text-center py-16 text-gray-500">
+  No clusters to display.
+</div>
+{% endif %}
