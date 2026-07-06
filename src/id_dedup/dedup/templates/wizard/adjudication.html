@@ -1,6 +1,36 @@
 {% extends "wizard/base.html" %}
 {% block title %}Adjudication{% endblock %}
 {% block content %}
+<script>
+  Alpine.data('adjudication', () => ({
+    showNewIdentity: false,
+    newIdentityName: '',
+
+    assignTo(identityId) {
+      htmx.ajax('POST', '{% url "wizard:assign" %}', {
+        target: '#wizard-content',
+        swap: 'innerHTML',
+        values: {
+          csrfmiddlewaretoken: '{{ csrf_token }}',
+          identity_id: identityId,
+        },
+      })
+    },
+
+    confirmNewIdentity() {
+      const name = this.newIdentityName.trim()
+      if (!name) return
+      htmx.ajax('POST', '{% url "wizard:new_identity" %}', {
+        target: '#wizard-content',
+        swap: 'innerHTML',
+        values: {
+          csrfmiddlewaretoken: '{{ csrf_token }}',
+          display_name: name,
+        },
+      })
+    },
+  }))
+</script>
 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12"
      x-data="adjudication()">
   <div class="flex items-center justify-between mb-6">
@@ -103,37 +133,3 @@
 </main>
 {% endblock %}
 
-{% block extrahead %}
-<script>
-  document.addEventListener('alpine:init', () => {
-    Alpine.data('adjudication', () => ({
-      showNewIdentity: false,
-      newIdentityName: '',
-
-      assignTo(identityId) {
-        htmx.ajax('POST', '{% url "wizard:assign" %}', {
-          target: '#wizard-content',
-          swap: 'innerHTML',
-          values: {
-            csrfmiddlewaretoken: '{{ csrf_token }}',
-            identity_id: identityId,
-          },
-        })
-      },
-
-      confirmNewIdentity() {
-        const name = this.newIdentityName.trim()
-        if (!name) return
-        htmx.ajax('POST', '{% url "wizard:new_identity" %}', {
-          target: '#wizard-content',
-          swap: 'innerHTML',
-          values: {
-            csrfmiddlewaretoken: '{{ csrf_token }}',
-            display_name: name,
-          },
-        })
-      },
-    }))
-  })
-</script>
-{% endblock %}
