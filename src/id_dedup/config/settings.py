@@ -11,9 +11,12 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import secrets
 import warnings
 from pathlib import Path
 from urllib.parse import urlparse
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,13 +25,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-if not (secret_key := os.environ.get("SECRET_KEY")):
-    warnings.warn("SECRET_KEY environment variable not set", stacklevel=1)
-SECRET_KEY = secret_key or "django-insecure-provisional"
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DEBUG", "False").lower() in ("1", "true", "yes", "on")
+
+# SECURITY WARNING: keep the secret key used in production secret!
+if secret_key := os.environ.get("SECRET_KEY"):
+    SECRET_KEY = secret_key
+elif DEBUG:
+    warnings.warn(
+        "SECRET_KEY not set; generating an ephemeral key for development",
+        stacklevel=1,
+    )
+    SECRET_KEY = secrets.token_urlsafe(50)
+else:
+    # secret key must be set in production
+    raise ImproperlyConfigured("SECRET_KEY environment variable not set")
 
 ALLOWED_HOSTS = []
 
