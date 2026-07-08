@@ -133,8 +133,13 @@ class TestWizardSplit:
 
 class TestWizardReviewSave:
     @pytest.mark.django_db(transaction=True)
-    def test_save_without_session_redirects_upload(self, client):
+    def test_save_requires_post(self, client):
         resp = client.get(reverse("wizard:review_save"))
+        assert resp.status_code == 405
+
+    @pytest.mark.django_db(transaction=True)
+    def test_save_without_session_redirects_upload(self, client):
+        resp = client.post(reverse("wizard:review_save"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:upload")
 
@@ -165,6 +170,16 @@ class TestWizardAdjudication:
         assert resp.url == reverse("wizard:complete")
 
     @pytest.mark.django_db(transaction=True)
+    def test_next_requires_post(self, client):
+        resp = client.get(reverse("wizard:adjudication_next"))
+        assert resp.status_code == 405
+
+    @pytest.mark.django_db(transaction=True)
+    def test_prev_requires_post(self, client):
+        resp = client.get(reverse("wizard:adjudication_prev"))
+        assert resp.status_code == 405
+
+    @pytest.mark.django_db(transaction=True)
     def test_next_assigned_advances(self, client):
         proposals = _proposals(3)
         _setup_proposals(client, proposals, adj_index=1)
@@ -173,7 +188,7 @@ class TestWizardAdjudication:
             "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Test", "is_new": False},
         }
         session.save()
-        resp = client.get(reverse("wizard:adjudication_next"))
+        resp = client.post(reverse("wizard:adjudication_next"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:adjudication")
         assert client.session["wizard_adj_index"] == 2
@@ -181,7 +196,7 @@ class TestWizardAdjudication:
     @pytest.mark.django_db(transaction=True)
     def test_next_unassigned_redirects_back(self, client):
         _setup_proposals(client, _proposals(3), adj_index=1)
-        resp = client.get(reverse("wizard:adjudication_next"))
+        resp = client.post(reverse("wizard:adjudication_next"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:adjudication")
         assert client.session["wizard_adj_index"] == 1
@@ -195,20 +210,23 @@ class TestWizardAdjudication:
             "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Test", "is_new": False},
         }
         session.save()
-        resp = client.get(reverse("wizard:adjudication_next"))
+        resp = client.post(reverse("wizard:adjudication_next"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:complete")
+        # Verify _persist was called: summary stashed, wizard state cleared
+        assert client.session["wizard_summary"]["total_clusters"] == 2
+        assert "wizard_assignments" not in client.session
 
     @pytest.mark.django_db(transaction=True)
     def test_prev_goes_back(self, client):
         _setup_proposals(client, _proposals(3), adj_index=2)
-        client.get(reverse("wizard:adjudication_prev"))
+        client.post(reverse("wizard:adjudication_prev"))
         assert client.session["wizard_adj_index"] == 1
 
     @pytest.mark.django_db(transaction=True)
     def test_prev_at_zero_stays(self, client):
         _setup_proposals(client, _proposals(3), adj_index=0)
-        client.get(reverse("wizard:adjudication_prev"))
+        client.post(reverse("wizard:adjudication_prev"))
         assert client.session["wizard_adj_index"] == 0
 
     @pytest.mark.django_db(transaction=True)
@@ -233,6 +251,9 @@ class TestWizardAdjudication:
         resp = client.post(reverse("wizard:assign"), {"identity_id": str(identity_id)})
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:complete")
+        # End-of-wizard commit ran: wizard state cleared, summary stashed.
+        assert "wizard_assignments" not in client.session
+        assert client.session["wizard_summary"]["total_clusters"] == 2
 
     @pytest.mark.django_db(transaction=True)
     def test_assign_with_registry_identity(self, client):
@@ -421,13 +442,24 @@ class TestWizardAdjudication:
 
 class TestWizardComplete:
     @pytest.mark.django_db(transaction=True)
+    def test_complete_requires_post(self, client):
+        resp = client.post(reverse("wizard:complete"))
+        assert resp.status_code == 405
+
+    @pytest.mark.django_db(transaction=True)
+    def test_complete_without_summary_redirects_upload(self, client):
+        resp = client.get(reverse("wizard:complete"))
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:upload")
+
+    @pytest.mark.django_db(transaction=True)
     def test_complete_shows_summary(self, client):
-        _setup_proposals(client, _proposals(2), adj_index=0)
-        identity = Identity.objects.create(display_name="Alice")
         session = client.session
-        session["wizard_assignments"] = {
-            "0": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
-            "1": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
+        session["wizard_summary"] = {
+            "wizard_step": "complete",
+            "total_clusters": 2,
+            "assigned": 2,
+            "new_identities": 1,
         }
         session.save()
 
@@ -436,73 +468,57 @@ class TestWizardComplete:
         assert b"Complete" in resp.content
 
     @pytest.mark.django_db(transaction=True)
-    def test_complete_redirects_to_first_unassigned(self, client):
-        _setup_proposals(client, _proposals(4), adj_index=0)
-        session = client.session
-        session["wizard_assignments"] = {
-            "0": {"identity_id": "1", "display_name": "A", "is_new": False},
-            "2": {"identity_id": "3", "display_name": "C", "is_new": False},
-        }
-        session.save()
-
-        resp = client.get(reverse("wizard:complete"))
-        assert resp.status_code == 302
-        assert resp.url == reverse("wizard:adjudication")
-        assert client.session["wizard_adj_index"] == 1
-
-    @pytest.mark.django_db(transaction=True)
     def test_complete_persists_new_identities(self, client):
-        proposals = _proposals(2)
+        """The end-of-wizard commit (in _persist) creates new Identity rows."""
+        proposals = _proposals(1)
         _setup_proposals(client, proposals, adj_index=0)
 
-        new_id = str(uuid.uuid4())
-        session = client.session
-        session["wizard_assignments"] = {
-            "0": {"identity_id": new_id, "display_name": "New Person", "is_new": True},
-            "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Existing", "is_new": False},
-        }
-        session["wizard_new_identities"] = {new_id: "New Person"}
-        session.save()
-
-        Identity.objects.create(pk=proposals[1].proposed_matches[0].identity_id, display_name="Existing")
+        resp = client.post(reverse("wizard:new_identity"), {"display_name": "New Person"})
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:complete")
 
         resp = client.get(reverse("wizard:complete"))
         assert resp.status_code == 200
-
-        assert Identity.objects.filter(pk=new_id, display_name="New Person").exists()
+        assert Identity.objects.filter(display_name="New Person").exists()
 
     @pytest.mark.django_db(transaction=True)
     def test_complete_skips_deleted_identities(self, client):
+        """An is_new=False assignment whose identity was deleted is skipped, not created."""
         proposals = _proposals(2)
-        _setup_proposals(client, proposals, adj_index=0)
+        _setup_proposals(client, proposals, adj_index=1)
 
-        missing_id = str(uuid.uuid4())
+        deleted_id = str(uuid.uuid4())
+        existing = Identity.objects.create(display_name="Existing")
         session = client.session
         session["wizard_assignments"] = {
-            "0": {"identity_id": missing_id, "display_name": "Ghost", "is_new": False},
-            "1": {"identity_id": str(proposals[1].proposed_matches[0].identity_id), "display_name": "Existing", "is_new": False},
+            "0": {"identity_id": deleted_id, "display_name": "Ghost", "is_new": False},
         }
         session.save()
 
-        Identity.objects.create(pk=proposals[1].proposed_matches[0].identity_id, display_name="Existing")
+        resp = client.post(reverse("wizard:assign"), {"identity_id": str(existing.pk)})
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:complete")
 
         resp = client.get(reverse("wizard:complete"))
         assert resp.status_code == 200
+        assert not Identity.objects.filter(pk=deleted_id).exists()
 
     @pytest.mark.django_db(transaction=True)
     def test_complete_clears_session(self, client):
-        _setup_proposals(client, _proposals(2), adj_index=0)
-        identity = Identity.objects.create(display_name="Alice")
+        proposals = _proposals(2)
+        _setup_proposals(client, proposals, adj_index=1)
+        existing = Identity.objects.create(display_name="Alice")
         session = client.session
         session["wizard_assignments"] = {
-            "0": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
-            "1": {"identity_id": str(identity.pk), "display_name": "Alice", "is_new": False},
+            "0": {"identity_id": str(existing.pk), "display_name": "Alice", "is_new": False},
         }
         session.save()
 
+        client.post(reverse("wizard:assign"), {"identity_id": str(existing.pk)})
         client.get(reverse("wizard:complete"))
 
         assert "wizard_proposals" not in client.session
         assert "wizard_assignments" not in client.session
         assert "wizard_adj_index" not in client.session
         assert "wizard_cluster_result" not in client.session
+        assert "wizard_summary" in client.session

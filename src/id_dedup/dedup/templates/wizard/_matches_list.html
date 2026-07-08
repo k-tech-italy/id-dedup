@@ -22,7 +22,7 @@
           {{ match.matched_image_count }} existing image{{ match.matched_image_count|pluralize }}
         </div>
       </div>
-      <button @click="assignTo('{{ match.identity_id }}')"
+      <button @click.stop="assignTo('{{ match.identity_id }}')"
               class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium rounded-lg px-3 py-1.5 transition-colors">
         Assign
       </button>

@@ -13,7 +13,7 @@ from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpRe
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods, require_safe
+from django.views.decorators.http import require_POST, require_http_methods, require_safe
 
 from .models import Identity, Image
 from .pipeline import ClusterMember, ClusterResult, process_images
@@ -92,8 +92,7 @@ def _deserialize_proposal(d: dict) -> ClusterProposal:
 
 
 def _get_result(request: HttpRequest) -> ClusterResult | None:
-    raw = request.session.get("wizard_cluster_result")
-    if raw is None:
+    if (raw := request.session.get("wizard_cluster_result")) is None:
         return None
     return _deserialize_result(raw)
 
@@ -116,11 +115,11 @@ def _set_proposals(request: HttpRequest, proposals: list[ClusterProposal]) -> No
 SESSION_PREFIX = "wizard_"
 
 
-def _get_from_session(request: HttpRequest, key: str, default=None):
+def _get_from_session[T](request: HttpRequest, key: str, default: T | None = None) -> T:
     return request.session.get(f"{SESSION_PREFIX}{key}", default)
 
 
-def _set_to_session(request: HttpRequest, key: str, value) -> None:
+def _set_to_session(request: HttpRequest, key: str, value: object) -> None:
     request.session[f"{SESSION_PREFIX}{key}"] = value
 
 
@@ -200,6 +199,7 @@ def _hx_redirect(request: HttpRequest, to: str) -> HttpResponse:
 # ---------------------------------------------------------------------------
 
 
+# TODO: make it a CBV
 @require_http_methods(["GET", "POST"])
 def upload(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
@@ -263,18 +263,16 @@ def review(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST"])
 def split(request: HttpRequest) -> HttpResponse:
     """Handle both single drag-drop moves and multi-file split-drawer moves."""
-    result = _get_result(request)
-    if result is None:
+    # TODO: move the non-HTTP handling code to the service layer
+    if (result := _get_result(request)) is None:
         return _bad_request("No active session")
 
-    cluster_label_str = request.POST.get("cluster_label")
-    if cluster_label_str is None:
+    if (cluster_label_str := request.POST.get("cluster_label")) is None:
         return _bad_request("Missing cluster_label")
 
     cluster_label = int(cluster_label_str)
 
-    files_raw = request.POST.get("files")
-    if files_raw:
+    if files_raw := request.POST.get("files"):
         try:
             filenames = json.loads(files_raw)
         except (json.JSONDecodeError, TypeError):
@@ -330,12 +328,12 @@ def review_image(request: HttpRequest, path: str) -> FileResponse:
     return FileResponse(open(filepath, "rb"))
 
 
-@require_http_methods(["GET"])
+@require_POST
 def review_save(request: HttpRequest) -> HttpResponse:
     """
     Finalize clusters, compute proposals, redirect to adjudication.
 
-    Temp dir is kept alive — it's cleaned up in complete() after persisting.
+    Temp dir is kept alive — it's cleaned up in _persist() after persisting.
     """
     result = _get_result(request)
     if result is None:
@@ -402,7 +400,7 @@ def adjudication(request: HttpRequest) -> HttpResponse:
     return render(request, "wizard/adjudication.html", context)
 
 
-@require_http_methods(["GET"])
+@require_POST
 def adjudication_next(request: HttpRequest) -> HttpResponse:
     adj_index = _get_adj_index(request)
     proposals = _get_proposals(request)
@@ -414,13 +412,14 @@ def adjudication_next(request: HttpRequest) -> HttpResponse:
         return redirect("wizard:adjudication")
 
     if adj_index + 1 >= len(proposals):
+        _persist(request)
         return redirect("wizard:complete")
 
     _set_adj_index(request, adj_index + 1)
     return redirect("wizard:adjudication")
 
 
-@require_http_methods(["GET"])
+@require_POST
 def adjudication_prev(request: HttpRequest) -> HttpResponse:
     adj_index = _get_adj_index(request)
     if adj_index <= 0:
@@ -484,6 +483,7 @@ def assign(request: HttpRequest) -> HttpResponse:
 
     next_index = adj_index + 1
     if next_index >= len(proposals):
+        _persist(request)
         return _hx_redirect(request, "wizard:complete")
 
     _set_adj_index(request, next_index)
@@ -527,6 +527,7 @@ def new_identity(request: HttpRequest) -> HttpResponse:
 
     next_index = adj_index + 1
     if next_index >= len(proposals):
+        _persist(request)
         return _hx_redirect(request, "wizard:complete")
 
     _set_adj_index(request, next_index)
@@ -566,17 +567,14 @@ def search(request: HttpRequest) -> HttpResponse:
 # ---------------------------------------------------------------------------
 
 
-@require_http_methods(["GET"])
-def complete(request: HttpRequest) -> HttpResponse:
+def _persist(request: HttpRequest) -> dict:
+    """Persist all assignments to the DB and clean up the wizard session/temp dir.
+
+    Must only be called once every cluster has been assigned. Returns the summary
+    dict rendered by the read-only ``complete`` view.
+    """
     assignments = _get_assignments(request)
     proposals = _get_proposals(request) or []
-
-    # Guard: redirect to first unassigned cluster
-    if len(assignments) < len(proposals):
-        for i in range(len(proposals)):
-            if str(i) not in assignments:
-                _set_adj_index(request, i)
-                return redirect("wizard:adjudication")
 
     total = len(proposals)
     assigned = len(assignments)
@@ -622,13 +620,22 @@ def complete(request: HttpRequest) -> HttpResponse:
 
     _clear_wizard(request)
 
-    return render(
-        request,
-        "wizard/complete.html",
-        {
-            "wizard_step": "complete",
-            "total_clusters": total,
-            "assigned": assigned,
-            "new_identities": new_ids,
-        },
-    )
+    summary = {
+        "wizard_step": "complete",
+        "total_clusters": total,
+        "assigned": assigned,
+        "new_identities": new_ids,
+    }
+    _set_to_session(request, "summary", summary)
+    return summary
+
+
+@require_http_methods(["GET"])
+def complete(request: HttpRequest) -> HttpResponse:
+    # Read-only summary page. The actual DB writes happen in _persist(), called
+    # from the final assign/new_identity action once all clusters are assigned.
+    summary = _get_from_session(request, "summary")
+    if summary is None:
+        return redirect("wizard:upload")
+
+    return render(request, "wizard/complete.html", summary)

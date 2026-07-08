@@ -114,10 +114,13 @@
   <!-- footer -->
   <div class="flex items-center justify-between mt-8 pt-4 border-t border-gray-800">
     <div></div>
-    <a href="{% url 'wizard:review_save' %}"
-       class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors">
-      Proceed to Adjudication →
-    </a>
+    <form method="POST" action="{% url 'wizard:review_save' %}">
+      {% csrf_token %}
+      <button type="submit"
+              class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors">
+        Proceed to Adjudication →
+      </button>
+    </form>
   </div>
 </main>
 {% endblock %}
