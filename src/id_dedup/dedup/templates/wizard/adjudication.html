@@ -119,15 +119,22 @@
 
   <!-- footer nav -->
   <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-800">
-    <a href="{% url 'wizard:adjudication_prev' %}"
-       class="text-sm text-gray-400 border border-gray-700 rounded-lg px-4 py-2 hover:bg-gray-800 hover:text-gray-200 transition-colors {% if adj_index == 0 %}disabled opacity-30 pointer-events-none{% endif %}">
-      ← Previous
-    </a>
+    <form method="POST" action="{% url 'wizard:adjudication_prev' %}">
+      {% csrf_token %}
+      <button type="submit"
+              {% if adj_index == 0 %}disabled{% endif %}
+              class="text-sm text-gray-400 border border-gray-700 rounded-lg px-4 py-2 hover:bg-gray-800 hover:text-gray-200 transition-colors {% if adj_index == 0 %}opacity-30 cursor-not-allowed{% endif %}">
+        ← Previous
+      </button>
+    </form>
     {% if is_current_assigned %}
-    <a href="{% url 'wizard:adjudication_next' %}"
-       class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2 transition-colors">
-      Next →
-    </a>
+    <form method="POST" action="{% url 'wizard:adjudication_next' %}">
+      {% csrf_token %}
+      <button type="submit"
+              class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2 transition-colors">
+        Next →
+      </button>
+    </form>
     {% endif %}
   </div>
 </main>
