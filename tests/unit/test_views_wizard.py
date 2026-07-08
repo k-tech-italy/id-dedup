@@ -365,6 +365,16 @@ class TestWizardAdjudication:
         assert b"No identities found" in resp.content
 
     @pytest.mark.django_db(transaction=True)
+    def test_search_escapes_html_in_display_name(self, client):
+        Identity.objects.create(display_name='<script>alert(1)</script> "x"')
+
+        resp = client.get(reverse("wizard:search"), {"q": "script"})
+        content = resp.content.decode()
+        assert "<script>" not in content
+        assert "&lt;script&gt;" in content
+        assert 'alert(1)' in content
+
+    @pytest.mark.django_db(transaction=True)
     def test_search_includes_session_identities(self, client):
         Identity.objects.create(display_name="Alice")
 

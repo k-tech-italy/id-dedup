@@ -536,45 +536,29 @@ def new_identity(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET"])
 def search(request: HttpRequest) -> HttpResponse:
     """Search identities — returns HTML fragment for HTMX."""
-    q = request.GET.get("q", "").strip()
-    if not q:
-        content = "<div class='text-xs text-gray-500 py-2'>Type to search identities...</div>"
-        return HttpResponse(content.encode())
+    query = request.GET.get("q", "").strip()
+    if not query:
+        return render(request, "wizard/_search_results.html", {"results": [], "q": query})
 
-    identities = list(Identity.objects.filter(display_name__icontains=q)[:10])
+    identities = list(Identity.objects.filter(display_name__icontains=query)[:10])
     seen_names = {i.display_name.lower() for i in identities}
+
+    results = [{"identity_id": str(i.pk), "display_name": i.display_name, "is_new": False} for i in identities]
 
     # Merge session registry entries not already in DB results
     registry = _get_new_identities(request)
-    session_results = []
     for rid, rname in registry.items():
-        if q.lower() in rname.lower() and rname.lower() not in seen_names:
+        if query.lower() in rname.lower() and rname.lower() not in seen_names:
             seen_names.add(rname.lower())
-            session_results.append((rid, rname))
-
-    if not identities and not session_results:
-        content = "<div class='text-xs text-gray-500 py-2'>No identities found.</div>"
-        return HttpResponse(content.encode())
+            results.append({"identity_id": rid, "display_name": rname, "is_new": True})
 
     url = reverse("wizard:assign")
     csrf_token = get_token(request)
-
-    def _item(identity_id, display_name, badge=""):
-        return (
-            "<form method='post'"
-            f" hx-post='{url}' hx-target='#wizard-content' hx-swap='innerHTML'"
-            " class='block'>"
-            f"<input type='hidden' name='csrfmiddlewaretoken' value='{csrf_token}'>"
-            f"<input type='hidden' name='identity_id' value='{identity_id}'>"
-            "<button type='submit'"
-            " class='w-full text-left block text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors'>"
-            f"{display_name}{badge}</button></form>"
-        )
-
-    lines = [_item(str(i.pk), i.display_name) for i in identities]
-    lines += [_item(rid, rname, ' <span class="text-amber-400">(new)</span>') for rid, rname in session_results]
-    html = "<div class='space-y-1 mt-2'>" + "".join(lines) + "</div>"
-    return HttpResponse(html.encode())
+    return render(
+        request,
+        "wizard/_search_results.html",
+        {"results": results, "q": query, "url": url, "csrf_token": csrf_token},
+    )
 
 
 # ---------------------------------------------------------------------------

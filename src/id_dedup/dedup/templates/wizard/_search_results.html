@@ -1,0 +1,18 @@
+{% if not results %}
+  <div class='text-xs text-gray-500 py-2'>{% if q %}No identities found.{% else %}Type to search identities...{% endif %}</div>
+{% else %}
+  <div class='space-y-1 mt-2'>
+    {% for result in results %}
+    <form method='post'
+          hx-post='{{ url }}' hx-target='#wizard-content' hx-swap='innerHTML'
+          class='block'>
+      <input type='hidden' name='csrfmiddlewaretoken' value='{{ csrf_token }}'>
+      <input type='hidden' name='identity_id' value='{{ result.identity_id }}'>
+      <button type='submit'
+              class='w-full text-left block text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors'>
+        {{ result.display_name }}{% if result.is_new %} <span class="text-amber-400">(new)</span>{% endif %}
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+{% endif %}
