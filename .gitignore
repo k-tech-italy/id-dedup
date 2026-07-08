@@ -1,5 +1,6 @@
 .*
 ~*
+!.agents
 !.gitignore
 !.bumpversion.cfg
 !.pre-commit-config.yaml
