@@ -25,17 +25,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
+
+def _env_var_to_bool(name: str, default: bool = False) -> bool:
+    return os.environ.get(name, str(default)).casefold() in ("1", "true", "yes", "on")
+
+
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DEBUG", "False").lower() in ("1", "true", "yes", "on")
+DEBUG = _env_var_to_bool("DEBUG")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 if secret_key := os.environ.get("SECRET_KEY"):
     SECRET_KEY = secret_key
 elif DEBUG:
-    warnings.warn(
-        "SECRET_KEY not set; generating an ephemeral key for development",
-        stacklevel=1,
-    )
+    warnings.warn("SECRET_KEY not set; generating an ephemeral key for development", stacklevel=1)
     SECRET_KEY = secrets.token_urlsafe(50)
 else:
     # secret key must be set in production
@@ -43,6 +45,14 @@ else:
 
 _DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1"
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get("ALLOWED_HOSTS", _DEFAULT_ALLOWED_HOSTS).split(",")]
+
+
+# Security
+
+CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = _env_var_to_bool("SECURE_SSL_REDIRECT")
+SESSION_COOKIE_SECURE = SECURE_SSL_REDIRECT or not DEBUG
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
 
 
 # Application definition
