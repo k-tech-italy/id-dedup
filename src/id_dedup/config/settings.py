@@ -101,7 +101,10 @@ WSGI_APPLICATION = "id_dedup.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-parsed = urlparse(os.environ["DATABASE_URL"])
+try:
+    parsed = urlparse(os.environ["DATABASE_URL"])
+except KeyError as e:
+    raise ImproperlyConfigured("DATABASE_URL environment variable not set") from e
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
