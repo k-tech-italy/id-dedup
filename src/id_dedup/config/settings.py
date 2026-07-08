@@ -41,7 +41,8 @@ else:
     # secret key must be set in production
     raise ImproperlyConfigured("SECRET_KEY environment variable not set")
 
-ALLOWED_HOSTS = []
+_DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1"
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("ALLOWED_HOSTS", _DEFAULT_ALLOWED_HOSTS).split(",")]
 
 
 # Application definition
