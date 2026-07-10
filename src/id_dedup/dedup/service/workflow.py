@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from django.core.files import File
+from django.db import transaction
 
 from .. import pipeline
 from ..models import Identity, Image
@@ -139,7 +140,8 @@ def search_identities(
     registry: dict[str, str],
     limit: int = 10,
 ) -> list[dict]:
-    """Search identities by display name, merging DB results with session registry.
+    """
+    Search identities by display name, merging DB results with session registry.
 
     Returns a list of dicts with keys: identity_id, display_name, is_new.
     DB results appear first (is_new=False), then registry-only entries (is_new=True).
@@ -149,10 +151,7 @@ def search_identities(
     identities = list(Identity.objects.filter(display_name__icontains=query)[:limit])
     seen_names = {i.display_name.lower() for i in identities}
 
-    results = [
-        {"identity_id": str(i.pk), "display_name": i.display_name, "is_new": False}
-        for i in identities
-    ]
+    results = [{"identity_id": str(i.pk), "display_name": i.display_name, "is_new": False} for i in identities]
 
     for rid, rname in registry.items():
         if query.lower() in rname.lower() and rname.lower() not in seen_names:
@@ -162,6 +161,7 @@ def search_identities(
     return results
 
 
+@transaction.atomic
 def persist_assignments(
     assignments: dict,
     proposals: list[ClusterProposal],
