@@ -15,7 +15,6 @@ from django.views import View
 from django.views.decorators.http import require_POST, require_safe
 
 from . import serializers
-from .models import Identity
 from .service import proposals, workflow
 
 if TYPE_CHECKING:
@@ -424,16 +423,8 @@ def search(request: HttpRequest) -> HttpResponse:
     if not query:
         return render(request, "wizard/_search_results.html", {"results": [], "q": query})
 
-    identities = list(Identity.objects.filter(display_name__icontains=query)[:10])
-    seen_names = {i.display_name.lower() for i in identities}
-
-    results = [{"identity_id": str(i.pk), "display_name": i.display_name, "is_new": False} for i in identities]
-
     registry = _get_from_session(request, "new_identities", {})
-    for rid, rname in registry.items():
-        if query.lower() in rname.lower() and rname.lower() not in seen_names:
-            seen_names.add(rname.lower())
-            results.append({"identity_id": rid, "display_name": rname, "is_new": True})
+    results = workflow.search_identities(query, registry)
 
     url = reverse("wizard:assign")
     csrf_token = get_token(request)

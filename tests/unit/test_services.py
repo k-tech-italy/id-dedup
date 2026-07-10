@@ -610,3 +610,114 @@ def test_persist_assignments_cleans_up_temp_dir(tmp_path):
 
     assert not tmp_path.exists()
     assert summary["total_clusters"] == 0
+
+
+# ---------------------------------------------------------------------------
+# search_identities
+# ---------------------------------------------------------------------------
+
+
+def test_search_identities_queries_db_by_icontains():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_qs = chainable_qs([])
+        MockIdentity.objects.filter.return_value = mock_qs
+        search_identities("Ali", {})
+
+    call_kwargs = MockIdentity.objects.filter.call_args[1]
+    assert "display_name__icontains" in call_kwargs
+    assert call_kwargs["display_name__icontains"] == "Ali"
+
+
+def test_search_identities_respects_limit():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_identities = [MagicMock(pk=f"uuid-{i}", display_name=f"Person{i}") for i in range(20)]
+        mock_qs = chainable_qs(mock_identities)
+        MockIdentity.objects.filter.return_value = mock_qs
+        results = search_identities("Person", {}, limit=5)
+
+    assert len(results) == 5
+    # Verify the LIMIT is applied at the ORM level, not in Python
+    last_call_args = MockIdentity.objects.filter.return_value.__getitem__.call_args[0][0]
+    assert last_call_args == slice(None, 5, None)
+
+
+def test_search_identities_returns_db_results():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_identity_1 = MagicMock()
+        mock_identity_1.pk = "uuid-alice"
+        mock_identity_1.display_name = "Alice"
+        mock_identity_2 = MagicMock()
+        mock_identity_2.pk = "uuid-albert"
+        mock_identity_2.display_name = "Albert"
+        mock_qs = chainable_qs([mock_identity_1, mock_identity_2])
+        MockIdentity.objects.filter.return_value = mock_qs
+        results = search_identities("Ali", {})
+
+    assert len(results) == 2
+    assert results[0] == {"identity_id": "uuid-alice", "display_name": "Alice", "is_new": False}
+    assert results[1] == {"identity_id": "uuid-albert", "display_name": "Albert", "is_new": False}
+
+
+def test_search_identities_merges_registry():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    registry = {"uuid-session": "Session Person"}
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_qs = chainable_qs([])
+        MockIdentity.objects.filter.return_value = mock_qs
+        results = search_identities("Session", registry)
+
+    assert len(results) == 1
+    assert results[0] == {"identity_id": "uuid-session", "display_name": "Session Person", "is_new": True}
+
+
+def test_search_identities_deduplicates_registry_and_db():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    registry = {"uuid-alice": "Alice"}
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_identity = MagicMock()
+        mock_identity.pk = "uuid-alice"
+        mock_identity.display_name = "Alice"
+        mock_qs = chainable_qs([mock_identity])
+        MockIdentity.objects.filter.return_value = mock_qs
+        results = search_identities("Ali", registry)
+
+    assert len(results) == 1
+    assert results[0]["is_new"] is False
+    assert results[0]["identity_id"] == "uuid-alice"
+
+
+def test_search_identities_case_insensitive_dedup():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    registry = {"uuid-session": "alice"}
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_identity = MagicMock()
+        mock_identity.pk = "uuid-alice"
+        mock_identity.display_name = "Alice"
+        mock_qs = chainable_qs([mock_identity])
+        MockIdentity.objects.filter.return_value = mock_qs
+        results = search_identities("Ali", registry)
+
+    assert len(results) == 1
+
+
+def test_search_identities_returns_empty_list_when_no_results():
+    from id_dedup.dedup.service.workflow import search_identities
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_qs = chainable_qs([])
+        MockIdentity.objects.filter.return_value = mock_qs
+        results = search_identities("Nonexistent", {})
+
+    assert results == []

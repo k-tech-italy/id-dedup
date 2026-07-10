@@ -134,6 +134,34 @@ def create_new_identity_assignment(
     return identity_id, registry, assignments
 
 
+def search_identities(
+    query: str,
+    registry: dict[str, str],
+    limit: int = 10,
+) -> list[dict]:
+    """Search identities by display name, merging DB results with session registry.
+
+    Returns a list of dicts with keys: identity_id, display_name, is_new.
+    DB results appear first (is_new=False), then registry-only entries (is_new=True).
+    Deduplicated by display_name (case-insensitive) — if a registry entry has the
+    same display name as a DB entry, only the DB entry is returned.
+    """
+    identities = list(Identity.objects.filter(display_name__icontains=query)[:limit])
+    seen_names = {i.display_name.lower() for i in identities}
+
+    results = [
+        {"identity_id": str(i.pk), "display_name": i.display_name, "is_new": False}
+        for i in identities
+    ]
+
+    for rid, rname in registry.items():
+        if query.lower() in rname.lower() and rname.lower() not in seen_names:
+            seen_names.add(rname.lower())
+            results.append({"identity_id": rid, "display_name": rname, "is_new": True})
+
+    return results
+
+
 def persist_assignments(
     assignments: dict,
     proposals: list[ClusterProposal],
