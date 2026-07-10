@@ -11,6 +11,7 @@ def chainable_qs(rows: list) -> MagicMock:
     for method in ("filter", "annotate", "select_related", "order_by"):
         getattr(qs, method).return_value = qs
     qs.__iter__ = MagicMock(return_value=iter(rows))
+    qs.__getitem__.side_effect = lambda s: rows[: s.stop] if isinstance(s, slice) else rows[s]
     return qs
 
 
