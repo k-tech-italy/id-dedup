@@ -10,6 +10,21 @@ import pytest
 from tests.unit.helpers import chainable_qs, mock_image_row
 
 
+# @transaction.atomic on persist_assignments opens a real DB savepoint even
+# when every ORM call inside is mocked.  Patching `transaction.atomic` on the
+# module after import has no effect — the decorator is evaluated at definition
+# time, so the function is already wrapped by the time any fixture runs.  The
+# wrapper's __enter__ calls connection.get_autocommit() → ensure_connection(),
+# which hits the database.  Instead, swap in the original unwrapped function
+# that @wraps stashes under __wrapped__ so the test stays pure-unit (no DB
+# connection required).
+@pytest.fixture(autouse=True)
+def _noop_transaction_atomic(monkeypatch):
+    import id_dedup.dedup.service.workflow as mod
+
+    monkeypatch.setattr(mod, "persist_assignments", mod.persist_assignments.__wrapped__)
+
+
 # ---------------------------------------------------------------------------
 # ClusterProposal properties
 # ---------------------------------------------------------------------------
