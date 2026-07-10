@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+import pathlib
+import uuid
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -13,14 +15,14 @@ from tests.unit.helpers import chainable_qs, mock_image_row
 # ---------------------------------------------------------------------------
 
 def test_cluster_proposal_is_new_identity_when_no_matches():
-    from id_dedup.dedup.services import ClusterProposal
+    from id_dedup.dedup.service.proposals import ClusterProposal
 
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[])
     assert proposal.is_new_identity is True
 
 
 def test_cluster_proposal_is_not_new_identity_when_matches_exist():
-    from id_dedup.dedup.services import ClusterProposal, IdentityMatch
+    from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
 
     match = IdentityMatch(identity_id=1, display_name="Alice", similarity=0.85, matched_image_count=1)
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[match])
@@ -28,7 +30,7 @@ def test_cluster_proposal_is_not_new_identity_when_matches_exist():
 
 
 def test_cluster_proposal_best_match_returns_first_entry():
-    from id_dedup.dedup.services import ClusterProposal, IdentityMatch
+    from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
 
     matches = [
         IdentityMatch(identity_id=1, display_name="Alice", similarity=0.9, matched_image_count=2),
@@ -39,7 +41,7 @@ def test_cluster_proposal_best_match_returns_first_entry():
 
 
 def test_cluster_proposal_best_match_is_none_when_no_matches():
-    from id_dedup.dedup.services import ClusterProposal
+    from id_dedup.dedup.service.proposals import ClusterProposal
 
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[])
     assert proposal.best_match is None
@@ -49,34 +51,34 @@ def test_cluster_proposal_best_match_is_none_when_no_matches():
 # propose_for_members
 # ---------------------------------------------------------------------------
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_for_members_returns_proposal_with_correct_members(mock_query, unit_member):
-    from id_dedup.dedup.services import propose_for_members
+    from id_dedup.dedup.service.proposals import propose_for_members
 
     proposal = propose_for_members([unit_member])
     assert proposal.members == [unit_member]
 
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_for_members_single_member_centroid_equals_embedding(mock_query, unit_member):
-    from id_dedup.dedup.services import propose_for_members
+    from id_dedup.dedup.service.proposals import propose_for_members
 
     proposal = propose_for_members([unit_member])
     np.testing.assert_array_equal(proposal.centroid, unit_member.embedding)
 
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_for_members_multi_member_centroid_is_unit_vector(mock_query, two_member_group):
-    from id_dedup.dedup.services import propose_for_members
+    from id_dedup.dedup.service.proposals import propose_for_members
 
     proposal = propose_for_members(two_member_group)
     norm = float(np.linalg.norm(proposal.centroid))
     assert abs(norm - 1.0) < 1e-5
 
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_for_members_passes_params_to_query(mock_query, unit_member):
-    from id_dedup.dedup.services import propose_for_members
+    from id_dedup.dedup.service.proposals import propose_for_members
 
     propose_for_members([unit_member], top_k=3, min_similarity=0.7, similarity_band=0.05)
     args = mock_query.call_args.args
@@ -85,9 +87,9 @@ def test_propose_for_members_passes_params_to_query(mock_query, unit_member):
     assert args[3] == 0.05   # similarity_band
 
 
-@patch("id_dedup.dedup.services._query_candidates")
+@patch("id_dedup.dedup.service.proposals._query_candidates")
 def test_propose_for_members_returns_matches_from_query(mock_query, unit_member, strong_and_weak_match):
-    from id_dedup.dedup.services import propose_for_members
+    from id_dedup.dedup.service.proposals import propose_for_members
 
     mock_query.return_value = strong_and_weak_match
     proposal = propose_for_members([unit_member])
@@ -99,27 +101,27 @@ def test_propose_for_members_returns_matches_from_query(mock_query, unit_member,
 # propose_matches
 # ---------------------------------------------------------------------------
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_matches_one_proposal_per_group(mock_query, cluster_result_with_groups):
-    from id_dedup.dedup.services import propose_matches
+    from id_dedup.dedup.service.proposals import propose_matches
 
     proposals = propose_matches(cluster_result_with_groups)
     group_proposals = [p for p in proposals if len(p.members) > 1]
     assert len(group_proposals) == 2
 
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_matches_one_proposal_per_singleton(mock_query, cluster_result_with_groups):
-    from id_dedup.dedup.services import propose_matches
+    from id_dedup.dedup.service.proposals import propose_matches
 
     proposals = propose_matches(cluster_result_with_groups)
     singleton_proposals = [p for p in proposals if len(p.members) == 1]
     assert len(singleton_proposals) == 1
 
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_matches_groups_precede_singletons(mock_query, cluster_result_with_groups):
-    from id_dedup.dedup.services import propose_matches
+    from id_dedup.dedup.service.proposals import propose_matches
 
     proposals = propose_matches(cluster_result_with_groups)
     # First two proposals should be the groups (2 members each)
@@ -128,10 +130,10 @@ def test_propose_matches_groups_precede_singletons(mock_query, cluster_result_wi
     assert len(proposals[2].members) == 1
 
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_matches_empty_result_returns_empty(mock_query):
     from id_dedup.dedup.pipeline import ClusterResult
-    from id_dedup.dedup.services import propose_matches
+    from id_dedup.dedup.service.proposals import propose_matches
 
     assert propose_matches(ClusterResult()) == []
 
@@ -141,18 +143,18 @@ def test_propose_matches_empty_result_returns_empty(mock_query):
 # ---------------------------------------------------------------------------
 
 def test_query_candidates_returns_empty_when_no_db_images():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs([])
         result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
     assert result == []
 
 
 def test_query_candidates_collapses_multiple_images_of_same_identity():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
@@ -161,14 +163,14 @@ def test_query_candidates_collapses_multiple_images_of_same_identity():
         mock_image_row(identity_id=1, display_name="Alice", distance=0.15),
         mock_image_row(identity_id=1, display_name="Alice", distance=0.2),
     ]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
     assert len(result) == 1
 
 
 def test_query_candidates_keeps_best_similarity_per_identity():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
@@ -176,14 +178,14 @@ def test_query_candidates_keeps_best_similarity_per_identity():
         mock_image_row(identity_id=1, display_name="Alice", distance=0.1),   # sim=0.9 (best)
         mock_image_row(identity_id=1, display_name="Alice", distance=0.3),   # sim=0.7
     ]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
     assert abs(result[0].similarity - 0.9) < 1e-5
 
 
 def test_query_candidates_counts_all_matching_images_per_identity():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
@@ -192,14 +194,14 @@ def test_query_candidates_counts_all_matching_images_per_identity():
         mock_image_row(identity_id=1, display_name="Alice", distance=0.2),
         mock_image_row(identity_id=1, display_name="Alice", distance=0.3),
     ]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
     assert result[0].matched_image_count == 3
 
 
 def test_query_candidates_similarity_band_drops_weak_alternatives():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
@@ -207,7 +209,7 @@ def test_query_candidates_similarity_band_drops_weak_alternatives():
         mock_image_row(identity_id=1, display_name="Alice", distance=0.1),   # sim=0.9
         mock_image_row(identity_id=2, display_name="Bob",   distance=0.4),   # sim=0.6
     ]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         # band=0.1 → threshold=0.8; Bob (0.6) should be dropped
         result = _query_candidates(centroid, top_k=5, min_similarity=0.5, similarity_band=0.1)
@@ -216,7 +218,7 @@ def test_query_candidates_similarity_band_drops_weak_alternatives():
 
 
 def test_query_candidates_similarity_band_keeps_competitive_alternatives():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
@@ -224,7 +226,7 @@ def test_query_candidates_similarity_band_keeps_competitive_alternatives():
         mock_image_row(identity_id=1, display_name="Alice", distance=0.12),  # sim≈0.88
         mock_image_row(identity_id=2, display_name="Bob",   distance=0.15),  # sim≈0.85
     ]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         # band=0.1 → both within 0.1 of best, both should survive
         result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
@@ -232,13 +234,379 @@ def test_query_candidates_similarity_band_keeps_competitive_alternatives():
 
 
 def test_query_candidates_respects_top_k():
-    from id_dedup.dedup.services import _query_candidates
+    from id_dedup.dedup.service.proposals import _query_candidates
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [mock_image_row(identity_id=i, display_name=f"Person{i}", distance=0.05 * i)
             for i in range(1, 8)]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         result = _query_candidates(centroid, top_k=3, min_similarity=0.0, similarity_band=0.0)
     assert len(result) <= 3
+
+
+# ---------------------------------------------------------------------------
+# process_uploads
+# ---------------------------------------------------------------------------
+
+
+def test_process_uploads_saves_files_and_calls_pipeline(tmp_path):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from id_dedup.dedup.pipeline import ClusterResult
+    from id_dedup.dedup.service.workflow import process_uploads
+
+    uploads = [
+        SimpleUploadedFile("photo1.jpg", b"image_data_1"),
+        SimpleUploadedFile("photo2.png", b"image_data_2"),
+    ]
+
+    with patch("id_dedup.dedup.service.workflow.pipeline.process_images") as mock_process:
+        mock_process.return_value = ClusterResult()
+        result = process_uploads(uploads, tmp_path)
+
+    saved = list(tmp_path.iterdir())
+    assert len(saved) == 2
+    suffixes = {f.suffix for f in saved}
+    assert suffixes == {".jpg", ".png"}
+    assert all(f.read_bytes() in (b"image_data_1", b"image_data_2") for f in saved)
+    mock_process.assert_called_once()
+    args = mock_process.call_args[0][0]
+    assert len(args) == 2
+
+
+def test_process_uploads_handles_none(tmp_path):
+    from id_dedup.dedup.service.workflow import process_uploads
+
+    with patch("id_dedup.dedup.service.workflow.pipeline.process_images") as mock_process:
+        process_uploads(None, tmp_path)
+    mock_process.assert_called_once_with([])
+
+
+def test_process_uploads_uses_default_filename_when_missing(tmp_path):
+    from id_dedup.dedup.service.workflow import process_uploads
+
+    mock_file = MagicMock()
+    mock_file.name = ""
+    mock_file.chunks.return_value = [b"data"]
+
+    with patch("id_dedup.dedup.service.workflow.pipeline.process_images"):
+        process_uploads([mock_file], tmp_path)
+
+    saved = list(tmp_path.iterdir())
+    assert len(saved) == 1
+    assert saved[0].stem.startswith("image")
+
+
+# ---------------------------------------------------------------------------
+# apply_split
+# ---------------------------------------------------------------------------
+
+
+def test_apply_split_moves_files_via_filenames(splittable_result):
+    from id_dedup.dedup.service.workflow import apply_split
+
+    result = apply_split(splittable_result, 0, filenames=[
+        "synthetic/person0/photo0.jpg",
+        "synthetic/person0/photo1.jpg",
+    ])
+    assert len(result.clusters[0]) == 1
+    assert result.clusters[0][0].file.name == "photo2.jpg"
+    # Moved group gets the next available label
+    new_label = max(k for k in result.clusters if k >= 0)
+    assert new_label == 2
+    assert len(result.clusters[2]) == 2
+
+
+def test_apply_split_moves_file_via_path(splittable_result):
+    from id_dedup.dedup.service.workflow import apply_split
+
+    result = apply_split(splittable_result, 1, file_path="synthetic/person1/photo0.jpg")
+    assert len(result.clusters[1]) == 1
+    assert result.clusters[1][0].file.name == "photo1.jpg"
+    # Single file move lands in singletons
+    assert len(result.singletons) == 1
+
+
+def test_apply_split_raises_on_no_matching_files(splittable_result):
+    from id_dedup.dedup.service.workflow import apply_split
+
+    with pytest.raises(ValueError, match="No matching files found"):
+        apply_split(splittable_result, 0, file_path="nonexistent.jpg")
+
+
+def test_apply_split_raises_on_invalid_label(splittable_result):
+    from id_dedup.dedup.service.workflow import apply_split
+
+    with pytest.raises(ValueError):
+        apply_split(splittable_result, 99, file_path="anything.jpg")
+
+
+# ---------------------------------------------------------------------------
+# create_assignment
+# ---------------------------------------------------------------------------
+
+
+def test_create_assignment_resolves_from_proposal():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
+    from id_dedup.dedup.service.workflow import create_assignment
+    from tests.unit.helpers import unit_vector
+
+    match = IdentityMatch(identity_id="alice-uuid", display_name="Alice", similarity=0.9, matched_image_count=3)
+    proposal = ClusterProposal(
+        members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
+        centroid=unit_vector(seed=1),
+        proposed_matches=[match],
+    )
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        MockIdentity.objects.filter.return_value.exists.return_value = True
+        assignments, registry = create_assignment(proposal, "alice-uuid", {}, {}, 0)
+
+    entry = assignments["0"]
+    assert entry["identity_id"] == "alice-uuid"
+    assert entry["display_name"] == "Alice"
+    assert entry["is_new"] is False
+
+
+def test_create_assignment_marks_new_when_proposal_identity_not_in_db():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
+    from id_dedup.dedup.service.workflow import create_assignment
+    from tests.unit.helpers import unit_vector
+
+    match = IdentityMatch(identity_id="alice-uuid", display_name="Alice", similarity=0.9, matched_image_count=3)
+    proposal = ClusterProposal(
+        members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
+        centroid=unit_vector(seed=1),
+        proposed_matches=[match],
+    )
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        MockIdentity.objects.filter.return_value.exists.return_value = False
+        assignments, registry = create_assignment(proposal, "alice-uuid", {}, {}, 0)
+
+    assert assignments["0"]["is_new"] is True
+
+
+def test_create_assignment_resolves_from_registry():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import create_assignment
+    from tests.unit.helpers import unit_vector
+
+    proposal = ClusterProposal(
+        members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
+        centroid=unit_vector(seed=1),
+        proposed_matches=[],
+    )
+    registry = {"session-uuid": "Session Person"}
+
+    assignments, registry = create_assignment(proposal, "session-uuid", {}, registry, 0)
+
+    entry = assignments["0"]
+    assert entry["identity_id"] == "session-uuid"
+    assert entry["display_name"] == "Session Person"
+    assert entry["is_new"] is True
+
+
+def test_create_assignment_resolves_from_db():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import create_assignment
+    from tests.unit.helpers import unit_vector
+
+    proposal = ClusterProposal(
+        members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
+        centroid=unit_vector(seed=1),
+        proposed_matches=[],
+    )
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        mock_identity = MockIdentity.objects.get.return_value
+        mock_identity.display_name = "DB Person"
+        assignments, registry = create_assignment(proposal, "db-uuid", {}, {}, 0)
+
+    entry = assignments["0"]
+    assert entry["identity_id"] == "db-uuid"
+    assert entry["display_name"] == "DB Person"
+    assert entry["is_new"] is False
+
+
+def test_create_assignment_defaults_to_unknown_when_not_found():
+    from django.core.exceptions import ObjectDoesNotExist
+
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import create_assignment
+    from tests.unit.helpers import unit_vector
+
+    proposal = ClusterProposal(
+        members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
+        centroid=unit_vector(seed=1),
+        proposed_matches=[],
+    )
+
+    ghost_id = str(uuid.uuid4())
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        MockIdentity.DoesNotExist = ObjectDoesNotExist
+        MockIdentity.objects.get.side_effect = ObjectDoesNotExist
+        assignments, registry = create_assignment(proposal, ghost_id, {}, {}, 0)
+
+    entry = assignments["0"]
+    assert entry["display_name"] == "Unknown"
+    assert entry["is_new"] is True
+
+
+def test_create_assignment_garbage_collects_previous_is_new():
+    from django.core.exceptions import ObjectDoesNotExist
+
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import create_assignment
+    from tests.unit.helpers import unit_vector
+
+    proposal = ClusterProposal(
+        members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
+        centroid=unit_vector(seed=1),
+        proposed_matches=[],
+    )
+
+    prev_id = str(uuid.uuid4())
+    new_id = str(uuid.uuid4())
+    assignments = {"0": {"identity_id": prev_id, "display_name": "Old", "is_new": True}}
+    registry = {prev_id: "Old"}
+
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        MockIdentity.DoesNotExist = ObjectDoesNotExist
+        MockIdentity.objects.get.side_effect = ObjectDoesNotExist
+        assignments, registry = create_assignment(proposal, new_id, assignments, registry, 0)
+
+    assert prev_id not in registry
+
+
+# ---------------------------------------------------------------------------
+# create_new_identity_assignment
+# ---------------------------------------------------------------------------
+
+
+def test_create_new_identity_assignment_creates_entry():
+    from id_dedup.dedup.service.workflow import create_new_identity_assignment
+
+    identity_id, registry, assignments = create_new_identity_assignment("New Person", {}, {}, 0)
+
+    assert uuid.UUID(identity_id)  # valid uuid
+    assert registry[identity_id] == "New Person"
+    entry = assignments["0"]
+    assert entry["display_name"] == "New Person"
+    assert entry["is_new"] is True
+
+
+def test_create_new_identity_assignment_garbage_collects_previous():
+    from id_dedup.dedup.service.workflow import create_new_identity_assignment
+
+    prev_id = str(uuid.uuid4())
+    assignments = {"0": {"identity_id": prev_id, "display_name": "Old", "is_new": True}}
+    registry = {prev_id: "Old"}
+
+    identity_id, registry, assignments = create_new_identity_assignment("New Person", registry, assignments, 0)
+
+    assert prev_id not in registry
+
+
+# ---------------------------------------------------------------------------
+# persist_assignments
+# ---------------------------------------------------------------------------
+
+
+def test_persist_assignments_creates_new_identities():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import persist_assignments
+    from tests.unit.helpers import unit_vector
+
+    identity_id = str(uuid.uuid4())
+    assignments = {"0": {"identity_id": identity_id, "display_name": "New Person", "is_new": True}}
+    member = ClusterMember(file=pathlib.Path("nope.jpg"), embedding=unit_vector(seed=0))
+    proposal = ClusterProposal(members=[member], centroid=unit_vector(seed=1), proposed_matches=[])
+
+    with (
+        patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+        patch("id_dedup.dedup.service.workflow.Path.exists", return_value=False),
+    ):
+        MockIdentity.objects.get_or_create.return_value = (MockIdentity, True)
+        summary = persist_assignments(assignments, [proposal], tmpdir_name=None)
+
+    assert summary["total_clusters"] == 1
+    assert summary["assigned"] == 1
+    assert summary["new_identities"] == 1
+    MockIdentity.objects.get_or_create.assert_called_once_with(
+        pk=identity_id, defaults={"display_name": "New Person"},
+    )
+
+
+def test_persist_assignments_creates_images():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import persist_assignments
+    from tests.unit.helpers import unit_vector
+
+    identity_id = str(uuid.uuid4())
+    assignments = {"0": {"identity_id": identity_id, "display_name": "Existing", "is_new": False}}
+    member = ClusterMember(file=pathlib.Path(__file__), embedding=unit_vector(seed=0))
+    proposal = ClusterProposal(members=[member], centroid=unit_vector(seed=1), proposed_matches=[])
+
+    with (
+        patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+    ):
+        MockIdentity.objects.get.return_value = MockIdentity
+        with patch.object(pathlib.Path, "exists", return_value=True):
+            summary = persist_assignments(assignments, [proposal], tmpdir_name=None)
+
+    assert MockImage.objects.create.called
+    call_kwargs = MockImage.objects.create.call_args[1]
+    assert call_kwargs["identity"] is MockIdentity
+    assert call_kwargs["embedding"] is member.embedding
+
+
+def test_persist_assignments_skips_deleted_identity():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import persist_assignments
+    from tests.unit.helpers import unit_vector
+
+    assignments = {"0": {"identity_id": "ghost", "display_name": "Ghost", "is_new": False}}
+    member = ClusterMember(file=pathlib.Path("nope.jpg"), embedding=unit_vector(seed=0))
+    proposal = ClusterProposal(members=[member], centroid=unit_vector(seed=1), proposed_matches=[])
+
+    with (
+        patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+        patch("id_dedup.dedup.service.workflow.Path.exists", return_value=False),
+    ):
+        MockIdentity.objects.get.side_effect = MockIdentity.DoesNotExist
+        summary = persist_assignments(assignments, [proposal], tmpdir_name=None)
+
+    assert not MockImage.objects.create.called
+    assert summary["total_clusters"] == 1
+    assert summary["assigned"] == 1
+    assert summary["new_identities"] == 0
+
+
+def test_persist_assignments_cleans_up_temp_dir(tmp_path):
+    from id_dedup.dedup.service.workflow import persist_assignments
+
+    (tmp_path / "some_image.jpg").touch()
+
+    with (
+        patch("id_dedup.dedup.service.workflow.Identity"),
+        patch("id_dedup.dedup.service.workflow.Image"),
+    ):
+        summary = persist_assignments({}, [], tmpdir_name=str(tmp_path))
+
+    assert not tmp_path.exists()
+    assert summary["total_clusters"] == 0

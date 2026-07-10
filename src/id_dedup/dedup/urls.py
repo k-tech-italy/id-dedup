@@ -5,7 +5,7 @@ from . import views
 app_name = "wizard"
 
 urlpatterns = [
-    path("upload/", views.upload, name="upload"),
+    path("upload/", views.Upload.as_view(), name="upload"),
     path("review/", views.review, name="review"),
     path("review/split/", views.split, name="split"),
     path("review/image/<path:path>", views.review_image, name="review_image"),

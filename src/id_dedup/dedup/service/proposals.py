@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from pgvector.django import CosineDistance
 
-from .models import Image
-from .pipeline import ClusterMember, ClusterResult
+from ..models import Image
+
+if TYPE_CHECKING:
+    from ..pipeline import ClusterMember, ClusterResult
 
 
 @dataclass
@@ -18,7 +21,7 @@ class IdentityMatch:
     image_url: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class ClusterProposal:
     """
     Proposed identity matches for a single cluster (or singleton).
@@ -138,8 +141,12 @@ def propose_matches(
     Singletons are each queried individually.
     Returns proposals: groups first (ascending by label), then singletons.
     """
-    proposals = [propose_for_members(members, top_k, min_similarity, similarity_band) for _label, members in sorted(result.groups.items())]
-    proposals.extend(propose_for_members([member], top_k, min_similarity, similarity_band) for member in result.singletons)
+    proposals = [
+        propose_for_members(members, top_k, min_similarity, similarity_band)
+        for _label, members in sorted(result.groups.items())
+    ]
+    proposals.extend(
+        propose_for_members([member], top_k, min_similarity, similarity_band) for member in result.singletons
+    )
 
     return proposals
-
