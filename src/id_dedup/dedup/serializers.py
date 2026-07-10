@@ -57,6 +57,7 @@ def deserialize_identity_match(d: dict) -> IdentityMatch:
         display_name=d["display_name"],
         similarity=d["similarity"],
         matched_image_count=d["matched_image_count"],
+        image_url=d.get("image_url"),
     )
 
 
