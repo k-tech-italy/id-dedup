@@ -53,7 +53,7 @@ def cluster_result_with_groups():
 
 @pytest.fixture
 def strong_and_weak_match():
-    from id_dedup.dedup.services import IdentityMatch
+    from id_dedup.dedup.service.proposals import IdentityMatch
 
     return [
         IdentityMatch(identity_id=1, display_name="Alice", similarity=0.9, matched_image_count=3),
@@ -63,7 +63,7 @@ def strong_and_weak_match():
 
 @pytest.fixture
 def close_matches():
-    from id_dedup.dedup.services import IdentityMatch
+    from id_dedup.dedup.service.proposals import IdentityMatch
 
     return [
         IdentityMatch(identity_id=1, display_name="Alice", similarity=0.88, matched_image_count=2),

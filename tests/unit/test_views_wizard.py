@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from id_dedup.dedup.models import Identity
 from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
-from id_dedup.dedup.services import ClusterProposal, IdentityMatch
+from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
 
 
 def _result() -> ClusterResult:
@@ -47,17 +47,17 @@ def _proposals(count: int = 3) -> list[ClusterProposal]:
 
 def _setup_result(client, result: ClusterResult):
     """Store a serialized ClusterResult in the client session."""
-    from id_dedup.dedup.views import _serialize_result
+    from id_dedup.dedup.serializers import serialize_result
     session = client.session
-    session["wizard_cluster_result"] = _serialize_result(result)
+    session["wizard_cluster_result"] = serialize_result(result)
     session.save()
 
 
 def _setup_proposals(client, proposals: list[ClusterProposal], adj_index: int = 0):
     """Store serialized proposals + index in the client session."""
-    from id_dedup.dedup.views import _serialize_proposal
+    from id_dedup.dedup.serializers import serialize_proposal
     session = client.session
-    session["wizard_proposals"] = [_serialize_proposal(p) for p in proposals]
+    session["wizard_proposals"] = [serialize_proposal(p) for p in proposals]
     session["wizard_adj_index"] = adj_index
     session.save()
 
@@ -116,8 +116,8 @@ class TestWizardSplit:
             {"cluster_label": "0", "file": str(file_to_move)},
         )
 
-        from id_dedup.dedup.views import _deserialize_result
-        updated = _deserialize_result(client.session["wizard_cluster_result"])
+        from id_dedup.dedup.serializers import deserialize_result
+        updated = deserialize_result(client.session["wizard_cluster_result"])
         assert len(updated.clusters[0]) == 1
         assert updated.clusters[0][0].file == result.clusters[0][1].file
 
