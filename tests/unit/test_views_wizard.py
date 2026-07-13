@@ -5,6 +5,7 @@ import uuid
 
 import numpy as np
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from id_dedup.dedup.models import Identity
@@ -79,6 +80,21 @@ class TestWizardUpload:
         assert resp.status_code == 200
         assert resp.context["wizard_step"] == "upload"
         assert b"Upload" in resp.content
+
+    @pytest.mark.django_db(transaction=True)
+    def test_post_with_non_image_rejects(self, client):
+        fake = SimpleUploadedFile("doc.pdf", b"%PDF-1.4 garbage", content_type="application/pdf")
+        resp = client.post(reverse("wizard:upload"), {"images": [fake]})
+        assert resp.status_code == 200
+        assert b"Unsupported" in resp.content
+
+    @pytest.mark.django_db(transaction=True)
+    def test_post_with_disguised_file_rejects(self, client):
+        # .jpg extension + image/jpeg content-type, but PDF magic bytes — server must catch it
+        fake = SimpleUploadedFile("photo.jpg", b"%PDF-1.4 garbage", content_type="image/jpeg")
+        resp = client.post(reverse("wizard:upload"), {"images": [fake]})
+        assert resp.status_code == 200
+        assert b"Unsupported" in resp.content
 
 
 # ---------------------------------------------------------------------------

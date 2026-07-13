@@ -37,9 +37,11 @@
               <span id="fileCount"></span>
               <button type="button" id="clearBtn" class="text-sky-400 hover:text-sky-300 underline">Clear</button>
             </div>
+            <div id="typeError" class="hidden text-sm text-red-400"></div>
           </div>
         </div>
 
+        {% if error %}<p class="text-sm text-red-400 mt-2">{{ error }}</p>{% endif %}
         <button id="uploadBtn" type="button"
                 class="w-full bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors">
           Upload &amp; Process
@@ -70,7 +72,27 @@
         const fileInfo = document.getElementById('fileInfo');
         const fileCount = document.getElementById('fileCount');
         const accumulatedFiles = [];
+        const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+        const typeError = document.getElementById('typeError');
         let dragCounter = 0;
+
+        function addFiles(fileList) {
+          const rejected = [];
+          for (const file of fileList) {
+            if (ALLOWED_TYPES.has(file.type)) {
+              accumulatedFiles.push(file);
+            } else {
+              rejected.push(file.name);
+            }
+          }
+          if (rejected.length) {
+            typeError.textContent = `Skipped (unsupported type): ${rejected.join(', ')}`;
+            typeError.classList.remove('hidden');
+          } else {
+            typeError.classList.add('hidden');
+          }
+          updateUI();
+        }
 
         function preventDefaults(e) {
           e.preventDefault();
@@ -115,22 +137,17 @@
           unhighlight();
           const files = e.dataTransfer.files;
           if (!files.length) return;
-          for (const file of files) {
-            accumulatedFiles.push(file);
-          }
-          updateUI();
+          addFiles(files);
         });
 
         fileInput.addEventListener('change', function() {
-          for (const file of this.files) {
-            accumulatedFiles.push(file);
-          }
+          addFiles(this.files);
           this.value = '';
-          updateUI();
         });
 
         clearBtn.addEventListener('click', function() {
           accumulatedFiles.length = 0;
+          typeError.classList.add('hidden');
           updateUI();
         });
 
