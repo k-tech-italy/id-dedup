@@ -48,7 +48,15 @@ def apply_split(
     file_path: str | None = None,
     to_cluster: int | None = None,
 ) -> ClusterResult:
-    """Move files out of a cluster. Returns the modified result."""
+    """
+    Move files out of a cluster, then return the updated result.
+
+    Exactly one of `filenames` or `file_path` must be provided.
+    Providing both raises a `ValueError`.
+    """
+    if filenames is not None and file_path:
+        raise ValueError("Provide either filenames or file_path, not both")
+
     file_set: set[Path] = set()
 
     if filenames is not None:

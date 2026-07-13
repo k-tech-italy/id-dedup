@@ -358,6 +358,13 @@ def test_apply_split_raises_on_invalid_label(splittable_result):
         apply_split(splittable_result, 99, file_path="anything.jpg")
 
 
+def test_apply_split_raises_when_both_filenames_and_file_path(splittable_result):
+    from id_dedup.dedup.service.workflow import apply_split
+
+    with pytest.raises(ValueError, match="not both"):
+        apply_split(splittable_result, 0, filenames=["a.jpg"], file_path="a.jpg")
+
+
 # ---------------------------------------------------------------------------
 # create_assignment
 # ---------------------------------------------------------------------------
