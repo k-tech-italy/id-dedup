@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import uuid
 
 import numpy as np
 
@@ -53,7 +54,7 @@ def serialize_identity_match(m: IdentityMatch) -> dict:
 def deserialize_identity_match(d: dict) -> IdentityMatch:
     """Restore an IdentityMatch from a dict produced by ``serialize_identity_match``."""
     return IdentityMatch(
-        identity_id=d["identity_id"],
+        identity_id=uuid.UUID(d["identity_id"]),
         display_name=d["display_name"],
         similarity=d["similarity"],
         matched_image_count=d["matched_image_count"],

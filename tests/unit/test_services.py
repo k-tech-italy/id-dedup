@@ -39,7 +39,7 @@ def test_cluster_proposal_is_new_identity_when_no_matches():
 def test_cluster_proposal_is_not_new_identity_when_matches_exist():
     from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
 
-    match = IdentityMatch(identity_id=1, display_name="Alice", similarity=0.85, matched_image_count=1)
+    match = IdentityMatch(identity_id=uuid.UUID(int=1), display_name="Alice", similarity=0.85, matched_image_count=1)
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=[match])
     assert proposal.is_new_identity is False
 
@@ -48,8 +48,8 @@ def test_cluster_proposal_best_match_returns_first_entry():
     from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
 
     matches = [
-        IdentityMatch(identity_id=1, display_name="Alice", similarity=0.9, matched_image_count=2),
-        IdentityMatch(identity_id=2, display_name="Bob", similarity=0.8, matched_image_count=1),
+        IdentityMatch(identity_id=uuid.UUID(int=1), display_name="Alice", similarity=0.9, matched_image_count=2),
+        IdentityMatch(identity_id=uuid.UUID(int=2), display_name="Bob", similarity=0.8, matched_image_count=1),
     ]
     proposal = ClusterProposal(members=[], centroid=np.zeros(512), proposed_matches=matches)
     assert proposal.best_match is matches[0]
@@ -174,9 +174,9 @@ def test_query_candidates_collapses_multiple_images_of_same_identity():
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.1),
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.15),
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.2),
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.15),
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.2),
     ]
     with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
@@ -190,8 +190,8 @@ def test_query_candidates_keeps_best_similarity_per_identity():
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.1),   # sim=0.9 (best)
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.3),   # sim=0.7
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),   # sim=0.9 (best)
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.3),   # sim=0.7
     ]
     with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
@@ -205,9 +205,9 @@ def test_query_candidates_counts_all_matching_images_per_identity():
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.1),
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.2),
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.3),
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.2),
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.3),
     ]
     with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
@@ -221,15 +221,15 @@ def test_query_candidates_similarity_band_drops_weak_alternatives():
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.1),   # sim=0.9
-        mock_image_row(identity_id=2, display_name="Bob",   distance=0.4),   # sim=0.6
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),   # sim=0.9
+        mock_image_row(identity_id=uuid.UUID(int=2), display_name="Bob",   distance=0.4),   # sim=0.6
     ]
     with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         # band=0.1 → threshold=0.8; Bob (0.6) should be dropped
         result = _query_candidates(centroid, top_k=5, min_similarity=0.5, similarity_band=0.1)
     assert len(result) == 1
-    assert result[0].identity_id == 1
+    assert result[0].identity_id == uuid.UUID(int=1)
 
 
 def test_query_candidates_similarity_band_keeps_competitive_alternatives():
@@ -238,8 +238,8 @@ def test_query_candidates_similarity_band_keeps_competitive_alternatives():
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
     rows = [
-        mock_image_row(identity_id=1, display_name="Alice", distance=0.12),  # sim≈0.88
-        mock_image_row(identity_id=2, display_name="Bob",   distance=0.15),  # sim≈0.85
+        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.12),  # sim≈0.88
+        mock_image_row(identity_id=uuid.UUID(int=2), display_name="Bob",   distance=0.15),  # sim≈0.85
     ]
     with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
@@ -253,7 +253,7 @@ def test_query_candidates_respects_top_k():
 
     centroid = np.ones(512, dtype=np.float32)
     centroid /= np.linalg.norm(centroid)
-    rows = [mock_image_row(identity_id=i, display_name=f"Person{i}", distance=0.05 * i)
+    rows = [mock_image_row(identity_id=uuid.UUID(int=i), display_name=f"Person{i}", distance=0.05 * i)
             for i in range(1, 8)]
     with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
@@ -369,7 +369,10 @@ def test_create_assignment_resolves_from_proposal():
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.helpers import unit_vector
 
-    match = IdentityMatch(identity_id="alice-uuid", display_name="Alice", similarity=0.9, matched_image_count=3)
+    alice_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    match = IdentityMatch(
+        identity_id=alice_id, display_name="Alice", similarity=0.9, matched_image_count=3,
+    )
     proposal = ClusterProposal(
         members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
         centroid=unit_vector(seed=1),
@@ -378,10 +381,10 @@ def test_create_assignment_resolves_from_proposal():
 
     with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
         MockIdentity.objects.filter.return_value.exists.return_value = True
-        assignments, registry = create_assignment(proposal, "alice-uuid", {}, {}, 0)
+        assignments, registry = create_assignment(proposal, str(alice_id), {}, {}, 0)
 
     entry = assignments["0"]
-    assert entry["identity_id"] == "alice-uuid"
+    assert entry["identity_id"] == str(alice_id)
     assert entry["display_name"] == "Alice"
     assert entry["is_new"] is False
 
@@ -392,7 +395,10 @@ def test_create_assignment_marks_new_when_proposal_identity_not_in_db():
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.helpers import unit_vector
 
-    match = IdentityMatch(identity_id="alice-uuid", display_name="Alice", similarity=0.9, matched_image_count=3)
+    alice_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    match = IdentityMatch(
+        identity_id=alice_id, display_name="Alice", similarity=0.9, matched_image_count=3,
+    )
     proposal = ClusterProposal(
         members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
         centroid=unit_vector(seed=1),
@@ -401,7 +407,7 @@ def test_create_assignment_marks_new_when_proposal_identity_not_in_db():
 
     with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
         MockIdentity.objects.filter.return_value.exists.return_value = False
-        assignments, registry = create_assignment(proposal, "alice-uuid", {}, {}, 0)
+        assignments, registry = create_assignment(proposal, str(alice_id), {}, {}, 0)
 
     assert assignments["0"]["is_new"] is True
 
@@ -417,12 +423,12 @@ def test_create_assignment_resolves_from_registry():
         centroid=unit_vector(seed=1),
         proposed_matches=[],
     )
-    registry = {"session-uuid": "Session Person"}
+    registry = {"00000000-0000-0000-0000-000000000003": "Session Person"}
 
-    assignments, registry = create_assignment(proposal, "session-uuid", {}, registry, 0)
+    assignments, registry = create_assignment(proposal, "00000000-0000-0000-0000-000000000003", {}, registry, 0)
 
     entry = assignments["0"]
-    assert entry["identity_id"] == "session-uuid"
+    assert entry["identity_id"] == "00000000-0000-0000-0000-000000000003"
     assert entry["display_name"] == "Session Person"
     assert entry["is_new"] is True
 
@@ -442,10 +448,10 @@ def test_create_assignment_resolves_from_db():
     with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
         mock_identity = MockIdentity.objects.get.return_value
         mock_identity.display_name = "DB Person"
-        assignments, registry = create_assignment(proposal, "db-uuid", {}, {}, 0)
+        assignments, registry = create_assignment(proposal, "00000000-0000-0000-0000-000000000004", {}, {}, 0)
 
     entry = assignments["0"]
-    assert entry["identity_id"] == "db-uuid"
+    assert entry["identity_id"] == "00000000-0000-0000-0000-000000000004"
     assert entry["display_name"] == "DB Person"
     assert entry["is_new"] is False
 
@@ -594,7 +600,8 @@ def test_persist_assignments_skips_deleted_identity():
     from id_dedup.dedup.service.workflow import persist_assignments
     from tests.unit.helpers import unit_vector
 
-    assignments = {"0": {"identity_id": "ghost", "display_name": "Ghost", "is_new": False}}
+    ghost_id = "00000000-0000-0000-0000-000000000009"
+    assignments = {"0": {"identity_id": ghost_id, "display_name": "Ghost", "is_new": False}}
     member = ClusterMember(file=pathlib.Path("nope.jpg"), embedding=unit_vector(seed=0))
     proposal = ClusterProposal(members=[member], centroid=unit_vector(seed=1), proposed_matches=[])
 

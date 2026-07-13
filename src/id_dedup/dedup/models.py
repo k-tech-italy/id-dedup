@@ -38,7 +38,12 @@ class Image(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    identity = models.ForeignKey(Identity, null=True, on_delete=models.SET_NULL)  # null = unassigned
+    identity = models.ForeignKey(
+        Identity,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="images",
+    )  # null = unassigned
     embedding = djvector.VectorField(dimensions=512)  # pgvector
     source_image = models.FileField(upload_to="images")
     created_at = models.DateTimeField(auto_now_add=True)
