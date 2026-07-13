@@ -34,7 +34,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 | `docs:` | documentation only |
 | `BREAKING CHANGE:` | incompatible API change |
 
-Scope hints (optional): `(ui)`, `(dedup)`, `(views)`, `(services)`.
+Scope hints (optional): `(ui)`, `(dedup)`, `(views)`, `(service)`.
 
 ## Pull requests
 
@@ -75,8 +75,9 @@ Key rules:
 ## Architecture rules
 
 - `pipeline.py` must have zero Django imports — it is Django-free so the ML layer can be tested without a DB.
-- `services.py` owns all ORM interaction. No ML/NumPy computation there.
-- Only `complete()` in `views.py` writes to the database.
+- `service/proposals.py` owns all ORM interaction for identity matching. No ML/NumPy computation there.
+- `service/workflow.py` is the orchestration layer — it imports both `pipeline` and `models` to bridge ML results to DB persistence.
+- Only `workflow.persist_assignments()` writes to the database (called from the `complete()` view).
 
 See [`.agents/docs/dedup-flow.md`](.agents/docs/dedup-flow.md) for the full pipeline walkthrough.
 
