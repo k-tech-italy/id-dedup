@@ -96,6 +96,15 @@ class TestWizardUpload:
         assert resp.status_code == 200
         assert b"Unsupported" in resp.content
 
+    @pytest.mark.django_db(transaction=True)
+    def test_post_with_valid_jpeg_redirects_to_review(self, client):
+        from unittest.mock import patch
+        jpeg = SimpleUploadedFile("photo.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100, content_type="image/jpeg")
+        with patch("id_dedup.dedup.views.process_images", return_value=ClusterResult()):
+            resp = client.post(reverse("wizard:upload"), {"images": [jpeg]})
+        assert resp.status_code == 302
+        assert resp.url == reverse("wizard:review")
+
 
 # ---------------------------------------------------------------------------
 # Review
