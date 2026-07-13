@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import uuid
 
 import pytest
 
@@ -56,8 +57,8 @@ def strong_and_weak_match():
     from id_dedup.dedup.service.proposals import IdentityMatch
 
     return [
-        IdentityMatch(identity_id=1, display_name="Alice", similarity=0.9, matched_image_count=3),
-        IdentityMatch(identity_id=2, display_name="Bob", similarity=0.6, matched_image_count=1),
+        IdentityMatch(identity_id=uuid.UUID(int=1), display_name="Alice", similarity=0.9, matched_image_count=3),
+        IdentityMatch(identity_id=uuid.UUID(int=2), display_name="Bob", similarity=0.6, matched_image_count=1),
     ]
 
 
@@ -66,6 +67,6 @@ def close_matches():
     from id_dedup.dedup.service.proposals import IdentityMatch
 
     return [
-        IdentityMatch(identity_id=1, display_name="Alice", similarity=0.88, matched_image_count=2),
-        IdentityMatch(identity_id=2, display_name="Bob", similarity=0.85, matched_image_count=1),
+        IdentityMatch(identity_id=uuid.UUID(int=1), display_name="Alice", similarity=0.88, matched_image_count=2),
+        IdentityMatch(identity_id=uuid.UUID(int=2), display_name="Bob", similarity=0.85, matched_image_count=1),
     ]

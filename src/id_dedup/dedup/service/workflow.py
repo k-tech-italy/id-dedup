@@ -84,7 +84,7 @@ def create_assignment(
         registry.pop(prev["identity_id"], None)
 
     display_name = next(
-        (m.display_name for m in proposal.proposed_matches if str(m.identity_id) == identity_id),
+        (m.display_name for m in proposal.proposed_matches if m.identity_id == uuid.UUID(identity_id)),
         None,
     )
 

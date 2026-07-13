@@ -9,12 +9,14 @@ from pgvector.django import CosineDistance
 from ..models import Image
 
 if TYPE_CHECKING:
-    from ..pipeline import ClusterMember, ClusterResult
+    import uuid
+
+    from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
 
 
 @dataclass
 class IdentityMatch:
-    identity_id: object  # UUID PK — avoids loading Identity objects unless needed
+    identity_id: uuid.UUID  # avoids loading Identity objects unless needed
     display_name: str
     similarity: float  # cosine similarity in [0, 1]; higher = better
     matched_image_count: int  # how many of this identity's images were near the centroid
@@ -78,7 +80,7 @@ def _query_candidates(
     )
 
     # Collapse to one entry per identity: highest similarity + count of close images
-    best: dict[object, IdentityMatch] = {}
+    best: dict[uuid.UUID, IdentityMatch] = {}
     for img in rows:
         sim = 1.0 - float(img.distance)
         pk = img.identity_id
