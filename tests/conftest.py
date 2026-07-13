@@ -29,7 +29,10 @@ def pytest_configure(config):
                     "PORT": parsed.port,
                 },
             },
+            SECRET_KEY="test-secret-key-not-for-production",
+            STATIC_URL="/static/",
             INSTALLED_APPS=[
+                "django.contrib.admin",
                 "django.contrib.contenttypes",
                 "django.contrib.auth",
                 "django.contrib.sessions",
