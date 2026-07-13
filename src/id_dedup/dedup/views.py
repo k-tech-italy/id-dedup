@@ -4,13 +4,13 @@ import json
 import pathlib
 import shutil
 import tempfile
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, overload
 
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseBadRequest
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views import View
 from django.views.decorators.http import require_POST, require_safe
 
@@ -73,7 +73,7 @@ def _cluster_context(result: ClusterResult) -> tuple[list, list]:
 
 def _now_str() -> str:
     """Return a human-readable batch name based on the current timestamp."""
-    return datetime.now().strftime("Batch %y%m%d-%H%M")
+    return timezone.now().strftime("Batch %y%m%d-%H%M")
 
 
 def _bad_request(msg: str) -> HttpResponseBadRequest:
