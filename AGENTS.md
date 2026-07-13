@@ -17,9 +17,11 @@
 | Path | Responsibility |
 |---|---|
 | `src/id_dedup/dedup/pipeline.py` | Stage 1 — Django-free. Embedding extraction, DBSCAN clustering, `ClusterResult` |
-| `src/id_dedup/dedup/services.py` | Stage 2 — ORM + pgvector. Identity matching, `ClusterProposal` |
+| `src/id_dedup/dedup/service/proposals.py` | Stage 2 — ORM + pgvector. Identity matching, `ClusterProposal` |
+| `src/id_dedup/dedup/service/workflow.py` | Orchestration — uploads, split delegation, assignment CRUD, search, DB persistence |
+| `src/id_dedup/dedup/serializers.py` | Session serialization/deserialization for pipeline and service data structures |
 | `src/id_dedup/dedup/models.py` | `Identity` (UUID, display_name) and `Image` (UUID, 512-d VectorField, nullable FK) |
-| `src/id_dedup/dedup/views.py` | 4-step wizard views, session serialisation helpers, HTMX partials |
+| `src/id_dedup/dedup/views.py` | 4-step wizard views, session helpers, HTMX partials |
 | `src/id_dedup/dedup/urls.py` | URL routes, `app_name="wizard"` |
 | `src/id_dedup/config/settings.py` | Django settings; `DATABASE_URL` from env |
 | `tests/conftest.py` | Session-scoped pipeline fixture; real example images at `tests/examples/` |
@@ -28,16 +30,17 @@
 
 ## Architecture boundary rule
 
-> **`pipeline.py` has zero Django imports. `services.py` owns all ORM interaction.**
+> **`pipeline.py` has zero Django imports. `service/proposals.py` owns all ORM interaction for identity matching.**
 
 - Never import Django models, settings, or ORM in `pipeline.py`.
-- Never do NumPy/sklearn computation in `services.py`.
+- Never do NumPy/sklearn computation in `service/proposals.py`.
+- `service/workflow.py` imports both `pipeline` and `models` — it is the orchestration layer that bridges ML results to DB persistence.
 
 This boundary is intentional: it allows the ML pipeline to be tested without a Django/DB setup. Violating it breaks that separation.
 
 ## DB writes: exactly one place
 
-Only `complete()` in `views.py` creates `Identity` and `Image` records. `pipeline.py` and `services.py` are read-only with respect to the database.
+Only `workflow.persist_assignments()` in `service/workflow.py` creates `Identity` and `Image` records (within `@transaction.atomic`). The `complete()` view calls it. `pipeline.py` and `service/proposals.py` are read-only with respect to the database.
 
 ## Running the project
 
@@ -62,7 +65,7 @@ Copy `.env.example` → `.env` and fill in `DATABASE_URL` and `SECRET_KEY` befor
 ## Two-stage deduplication pipeline
 
 1. **Stage 1** (`process_images` in `pipeline.py`): extract 512-d ArcFace embeddings → L2-normalise → DBSCAN with cosine metric → `ClusterResult`. No DB access.
-2. **Stage 2** (`propose_matches` in `services.py`): compute centroid per cluster → pgvector `CosineDistance` query → collapse per identity → `similarity_band` filter → `ClusterProposal` list. Read-only DB.
+2. **Stage 2** (`propose_matches` in `service/proposals.py`): compute centroid per cluster → pgvector `CosineDistance` query → collapse per identity → `similarity_band` filter → `ClusterProposal` list. Read-only DB.
 
 See [`.agents/docs/dedup-flow.md`](.agents/docs/dedup-flow.md) for the full technical walkthrough.
 

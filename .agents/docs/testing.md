@@ -21,7 +21,9 @@ tests/
     conftest.py             synthetic unit fixtures — no DB, no images
     helpers.py              chainable_qs, mock_image_row, unit_vector
     test_pipeline.py        extract_embedding, process_images, ClusterResult.split
-    test_services.py        ClusterProposal properties, propose_for_members, propose_matches, _query_candidates
+    test_services.py        ClusterProposal, propose_for_members, _query_candidates,
+                            process_uploads, apply_split, create_assignment,
+                            persist_assignments, search_identities
     test_views_wizard.py    wizard view tests
 ```
 
@@ -38,7 +40,7 @@ tests/
 
 ## Mocking the ORM
 
-`_query_candidates` in `services.py` is the only real ORM call in the pipeline/services stack. Everything else is pure Python or NumPy.
+`_query_candidates` in `service/proposals.py` is the only real ORM call in the pipeline/services stack. Everything else is pure Python or NumPy.
 
 ### Mocking `propose_for_members` / `propose_matches`
 
@@ -46,9 +48,9 @@ Patch `_query_candidates` at the module level to skip the DB entirely:
 
 ```python
 from unittest.mock import patch
-from id_dedup.dedup.services import propose_for_members
+from id_dedup.dedup.service.proposals import propose_for_members
 
-@patch("id_dedup.dedup.services._query_candidates", return_value=[])
+@patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_empty_matches(mock_qc, unit_member):
     proposal = propose_for_members([unit_member])
     assert proposal.is_new_identity
@@ -61,18 +63,57 @@ Patch `Image` at the module level and inject a `chainable_qs`:
 ```python
 from unittest.mock import patch, MagicMock
 from tests.unit.helpers import chainable_qs, mock_image_row
-from id_dedup.dedup.services import _query_candidates
+from id_dedup.dedup.service.proposals import _query_candidates
 
 def test_collapses_per_identity(unit_member_embedding):
     rows = [
         mock_image_row(identity_id=1, display_name="Alice", distance=0.1),
         mock_image_row(identity_id=1, display_name="Alice", distance=0.2),
     ]
-    with patch("id_dedup.dedup.services.Image") as MockImage:
+    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
         MockImage.objects.filter.return_value = chainable_qs(rows)
         results = _query_candidates(unit_member_embedding, top_k=5, min_similarity=0.6, similarity_band=0.1)
     assert len(results) == 1
     assert results[0].matched_image_count == 2
+```
+
+### Mocking `workflow.py` functions
+
+`workflow.py` functions depend on `pipeline` and Django ORM. Patch at the module level:
+
+```python
+from unittest.mock import patch
+from id_dedup.dedup.service.workflow import process_uploads
+
+@patch("id_dedup.dedup.service.workflow.pipeline.process_images")
+def test_process_uploads_delegates_to_pipeline(mock_process):
+    # mock_process.return_value = ClusterResult(...)
+    ...
+```
+
+For `persist_assignments`, the `@transaction.atomic` decorator wraps the function. Tests monkeypatch `persist_assignments.__wrapped__` to bypass the DB transaction:
+
+```python
+# In conftest or test file — auto-use fixture
+@pytest.fixture(autouse=True)
+def _noop_transaction_atomic(monkeypatch):
+    from id_dedup.dedup.service.workflow import persist_assignments
+    monkeypatch.setattr(persist_assignments, "__wrapped__", persist_assignments.__wrapped__)
+```
+
+For `search_identities`, patch `Identity.objects` and provide a `chainable_qs`:
+
+```python
+from unittest.mock import patch
+from tests.unit.helpers import chainable_qs
+from id_dedup.dedup.service.workflow import search_identities
+
+def test_search_merges_registry():
+    rows = [mock_image_row(identity_id=1, display_name="Alice", distance=0.0)]
+    with patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity:
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        results = search_identities("Ali", registry={"2": "Bob"})
+    assert len(results) == 2  # Alice from DB + Bob from registry
 ```
 
 ### Helper reference
@@ -92,7 +133,7 @@ View tests use Django's test client. Session state is set up via helper function
 - `_setup_result(client, result)` — serialises a `ClusterResult` into the session.
 - `_setup_proposals(client, proposals, adj_index)` — serialises proposals and sets `adj_index`.
 
-These call the view-layer serialisation helpers directly (`_serialize_result`, `_serialize_proposal`), not raw JSON.
+These call functions from `dedup/serializers.py` (`serialize_result`, `serialize_proposal`), not raw JSON.
 
 Mark any test that hits the ORM with `@pytest.mark.django_db(transaction=True)`. This includes `search`, `complete`, and `assign` with a DB-backed identity. Tests that only exercise session logic and return HTML fragments generally do not need it.
 

@@ -42,7 +42,7 @@ Pure Python pointer move — no embeddings are recomputed and no DB queries are 
 
 ---
 
-## Stage 2: services.py
+## Stage 2: service/proposals.py
 
 **`_centroid(members)`**
 Mean of the L2-normalised embeddings, then re-normalised. For a single member, returns its embedding directly (no computation needed).
@@ -67,6 +67,43 @@ Wraps `propose_for_members` over an entire `ClusterResult`. Emits proposals for 
 
 **`ClusterProposal`**
 `members`, `centroid`, `proposed_matches` (ranked descending). `is_new_identity` is `True` when `proposed_matches` is empty (no DB identity crossed `min_similarity`). `best_match` returns the first entry or `None`.
+
+---
+
+## Orchestration: service/workflow.py
+
+`workflow.py` bridges the ML pipeline and ORM persistence. It imports both `pipeline` and `models` — the only module that does so.
+
+**`process_uploads(uploads, tmpdir, default_file_name="image")`**
+Saves uploaded files to a temp directory with unique names, then calls `pipeline.process_images()`. Returns the `ClusterResult`.
+
+**`apply_split(result, cluster_label, filenames=None, file_path=None, to_cluster=None)`**
+Resolves file paths from filenames or a direct path, then delegates to `result.split()`. Returns the mutated `ClusterResult`.
+
+**`create_assignment(proposal, identity_id, assignments, registry, adj_index)`**
+Resolves the display name from the proposal's matches, the session registry, or the DB. Handles garbage-collection of previous `is_new` assignments when a cluster is reassigned.
+
+**`create_new_identity_assignment(display_name, registry, assignments, adj_index)`**
+Generates a UUID, stores the identity in the session registry, records the assignment. Includes GC logic for previous `is_new` entries.
+
+**`search_identities(query, registry, limit=10)`**
+Queries the DB (`display_name__icontains`) and merges with session-only identities from the registry. Deduplicates by case-insensitive display name.
+
+**`persist_assignments(assignments, proposals, tmpdir_name=None)`**
+The single write path. Runs inside `@transaction.atomic`. For each assignment: `get_or_create` for `is_new=True` identities, `get` for existing ones. Creates `Image` records with embeddings and uploaded files. Cleans up the temp directory. Returns a summary dict.
+
+---
+
+## Serialization: serializers.py
+
+Session serialization is handled by a dedicated module rather than inline in views. Functions:
+
+- `serialize_member` / `deserialize_member` — `ClusterMember` (file path + embedding via `.tolist()`)
+- `serialize_result` / `deserialize_result` — `ClusterResult` (dict keys cast `str → int` on deserialise)
+- `serialize_identity_match` / `deserialize_identity_match` — `IdentityMatch`
+- `serialize_proposal` / `deserialize_proposal` — `ClusterProposal`
+
+NumPy arrays are serialised via `.tolist()` and deserialised via `np.array(..., dtype=np.float32)`.
 
 ---
 
@@ -109,10 +146,10 @@ Shows one proposal at a time (`wizard_proposals[adj_index]`).
 **Step 4 — complete**
 Guards: redirects back to the first unassigned cluster if any exist.
 
-For each assignment: `get_or_create` for `is_new=True` identities, `get` for existing ones. Creates `Image` objects with the saved embedding and the uploaded file stored via Django's `FileField` (new UUID filename). Then: `shutil.rmtree(tmpdir)`, `_clear_wizard(request)`.
+Delegates to `workflow.persist_assignments()`, which handles the `@transaction.atomic` block, Identity/Image creation, and temp directory cleanup. Then clears the wizard session.
 
 ---
 
 ## Hard constraint: no auto-assignment
 
-Nothing in `pipeline.py`, `services.py`, or `views.py` ever automatically assigns a cluster to an identity. Every `identity_id` in `wizard_assignments` originates from an explicit user POST to `assign` or `new_identity`. Do not change this.
+Nothing in `pipeline.py`, `service/proposals.py`, `service/workflow.py`, or `views.py` ever automatically assigns a cluster to an identity. Every `identity_id` in `wizard_assignments` originates from an explicit user POST to `assign` or `new_identity`. Do not change this.
