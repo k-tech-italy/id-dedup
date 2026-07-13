@@ -253,7 +253,7 @@ def review_image(request: HttpRequest, path: str) -> FileResponse:
     if not filepath.is_file():
         raise Http404("File not found")
 
-    return FileResponse(open(filepath, "rb"))
+    return FileResponse(filepath.open("rb"))
 
 
 @require_POST
