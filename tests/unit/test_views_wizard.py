@@ -100,7 +100,7 @@ class TestWizardUpload:
     def test_post_with_valid_jpeg_redirects_to_review(self, client):
         from unittest.mock import patch
         jpeg = SimpleUploadedFile("photo.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100, content_type="image/jpeg")
-        with patch("id_dedup.dedup.views.process_images", return_value=ClusterResult()):
+        with patch("id_dedup.dedup.service.workflow.process_uploads", return_value=ClusterResult()):
             resp = client.post(reverse("wizard:upload"), {"images": [jpeg]})
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:review")
