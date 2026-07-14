@@ -130,23 +130,6 @@ def _adjudication_context(request: HttpRequest) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-_JPEG = b'\xff\xd8\xff'
-_PNG = b'\x89PNG\r\n\x1a\n'
-
-
-def _is_allowed_image(f) -> bool:
-    header = f.read(12)
-    f.seek(0)
-    if header[:3] == _JPEG:
-        return True
-    if header[:8] == _PNG:
-        return True
-    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
-        return True
-    return False
-
-
-
 class Upload(View):
     """Step 1 — accept image uploads, run clustering, redirect to review."""
 
@@ -160,18 +143,13 @@ class Upload(View):
         if not files:
             return render(request, "wizard/upload.html", {"wizard_step": "upload", "error": "No files selected."})
 
-        invalid = [f.name for f in files if not _is_allowed_image(f)]
-        if invalid:
-            return render(request, "wizard/upload.html", {
-                "wizard_step": "upload",
-                "error": f"Unsupported file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted.",
-            })
-
-        saved: list[pathlib.Path] = []
         tmpdir = pathlib.Path(tempfile.mkdtemp(prefix="id_dedup_"))
 
         try:
             result = workflow.process_uploads(files, tmpdir)
+        except ValueError as exc:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return render(request, "wizard/upload.html", {"wizard_step": "upload", "error": str(exc)})
         except Exception:
             shutil.rmtree(tmpdir, ignore_errors=True)
             raise

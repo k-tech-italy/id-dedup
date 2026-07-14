@@ -273,8 +273,8 @@ def test_process_uploads_saves_files_and_calls_pipeline(tmp_path):
     from id_dedup.dedup.service.workflow import process_uploads
 
     uploads = [
-        SimpleUploadedFile("photo1.jpg", b"image_data_1"),
-        SimpleUploadedFile("photo2.png", b"image_data_2"),
+        SimpleUploadedFile("photo1.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100),
+        SimpleUploadedFile("photo2.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 100),
     ]
 
     with patch("id_dedup.dedup.service.workflow.pipeline.process_images") as mock_process:
@@ -285,7 +285,9 @@ def test_process_uploads_saves_files_and_calls_pipeline(tmp_path):
     assert len(saved) == 2
     suffixes = {f.suffix for f in saved}
     assert suffixes == {".jpg", ".png"}
-    assert all(f.read_bytes() in (b"image_data_1", b"image_data_2") for f in saved)
+    jpeg_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+    png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+    assert all(f.read_bytes() in (jpeg_bytes, png_bytes) for f in saved)
     mock_process.assert_called_once()
     args = mock_process.call_args[0][0]
     assert len(args) == 2
@@ -304,7 +306,9 @@ def test_process_uploads_uses_default_filename_when_missing(tmp_path):
 
     mock_file = MagicMock()
     mock_file.name = ""
-    mock_file.chunks.return_value = [b"data"]
+    mock_file.read.return_value = b"\xff\xd8\xff\xe0" + b"\x00" * 8
+    mock_file.seek = MagicMock()
+    mock_file.chunks.return_value = [b"\xff\xd8\xff\xe0" + b"\x00" * 8]
 
     with patch("id_dedup.dedup.service.workflow.pipeline.process_images"):
         process_uploads([mock_file], tmp_path)
@@ -312,6 +316,36 @@ def test_process_uploads_uses_default_filename_when_missing(tmp_path):
     saved = list(tmp_path.iterdir())
     assert len(saved) == 1
     assert saved[0].stem.startswith("image")
+
+
+def test_process_uploads_rejects_non_image(tmp_path):
+    from io import BytesIO
+
+    import pytest
+
+    from id_dedup.dedup.service.workflow import process_uploads
+
+    mock_file = MagicMock()
+    mock_file.name = "doc.pdf"
+    mock_file.read.return_value = b"%PDF-1.4 garbage"
+    mock_file.seek = MagicMock()
+
+    with pytest.raises(ValueError, match="Unsupported"):
+        process_uploads([mock_file], tmp_path)
+
+
+def test_process_uploads_rejects_disguised_file(tmp_path):
+    import pytest
+
+    from id_dedup.dedup.service.workflow import process_uploads
+
+    mock_file = MagicMock()
+    mock_file.name = "photo.jpg"
+    mock_file.read.return_value = b"%PDF-1.4 garbage"
+    mock_file.seek = MagicMock()
+
+    with pytest.raises(ValueError, match="Unsupported"):
+        process_uploads([mock_file], tmp_path)
 
 
 # ---------------------------------------------------------------------------

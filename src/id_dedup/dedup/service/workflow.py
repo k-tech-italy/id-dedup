@@ -20,13 +20,34 @@ if TYPE_CHECKING:
     from .proposals import ClusterProposal
 
 
+_JPEG = b'\xff\xd8\xff'
+_PNG = b'\x89PNG\r\n\x1a\n'
+
+
+def _is_allowed_image(f) -> bool:
+    header = f.read(12)
+    f.seek(0)
+    if header[:3] == _JPEG:
+        return True
+    if header[:8] == _PNG:
+        return True
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return True
+    return False
+
+
 def process_uploads(
     uploads: Iterable[UploadedFile] | None,
     tmpdir: str | Path,
     default_file_name: str = "image",
 ) -> ClusterResult:
-    if uploads is None:
-        uploads = []
+    uploads = list(uploads or [])
+
+    invalid = [f.name for f in uploads if not _is_allowed_image(f)]
+    if invalid:
+        raise ValueError(
+            f"Unsupported file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted."
+        )
 
     tmpdir = Path(tmpdir)
     saved: list[Path] = []
