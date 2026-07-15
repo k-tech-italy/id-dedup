@@ -11,14 +11,21 @@ class Identity(models.Model):
 
     :param id: a UUID
     :param display_name: a human-readable name
+    :param centroid: L2-normalised mean of all assigned image embeddings; null until first image is assigned.
+    :param image_count: denormalised count of assigned images, updated alongside centroid.
     :param created_at:
     :param updated_at:
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     display_name = models.CharField(max_length=255, blank=True)
+    centroid = djvector.VectorField(dimensions=512, null=True)
+    image_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:  # noqa: D106
+        indexes = [djvector.HnswIndex(name="identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"])]
 
     @override
     def __str__(self):

@@ -11,6 +11,13 @@ import pytest
 
 
 @pytest.fixture
+def query_centroid():
+    from tests.unit.helpers import unit_vector
+
+    return unit_vector(seed=0)
+
+
+@pytest.fixture
 def unit_member():
     from id_dedup.dedup.pipeline import ClusterMember
     from tests.unit.helpers import unit_vector
