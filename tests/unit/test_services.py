@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from tests.unit.helpers import chainable_qs, mock_image_row
+from tests.unit.helpers import chainable_qs, mock_identity_row
 
 
 # @transaction.atomic on persist_assignments opens a real DB savepoint even
@@ -154,111 +154,111 @@ def test_propose_matches_empty_result_returns_empty(mock_query):
 
 
 # ---------------------------------------------------------------------------
-# _query_candidates — ORM mocked, testing collapse + filtering logic
+# _query_candidates — ORM mocked, testing Identity-centroid query + filtering
 # ---------------------------------------------------------------------------
 
-def test_query_candidates_returns_empty_when_no_db_images():
+def test_query_candidates_returns_empty_when_no_identities_with_centroid(query_centroid):
     from id_dedup.dedup.service.proposals import _query_candidates
 
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs([])
-        result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
+    with patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity:
+        MockIdentity.objects.filter.return_value = chainable_qs([])
+        result = _query_candidates(query_centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
     assert result == []
 
 
-def test_query_candidates_collapses_multiple_images_of_same_identity():
+def test_query_candidates_returns_one_result_per_identity(query_centroid):
     from id_dedup.dedup.service.proposals import _query_candidates
 
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
-    rows = [
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.15),
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.2),
-    ]
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs(rows)
-        result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
-    assert len(result) == 1
-
-
-def test_query_candidates_keeps_best_similarity_per_identity():
-    from id_dedup.dedup.service.proposals import _query_candidates
-
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
-    rows = [
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),   # sim=0.9 (best)
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.3),   # sim=0.7
-    ]
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs(rows)
-        result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
-    assert abs(result[0].similarity - 0.9) < 1e-5
-
-
-def test_query_candidates_counts_all_matching_images_per_identity():
-    from id_dedup.dedup.service.proposals import _query_candidates
-
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
-    rows = [
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.2),
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.3),
-    ]
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs(rows)
-        result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
-    assert result[0].matched_image_count == 3
-
-
-def test_query_candidates_similarity_band_drops_weak_alternatives():
-    from id_dedup.dedup.service.proposals import _query_candidates
-
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
-    rows = [
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),   # sim=0.9
-        mock_image_row(identity_id=uuid.UUID(int=2), display_name="Bob",   distance=0.4),   # sim=0.6
-    ]
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs(rows)
-        # band=0.1 → threshold=0.8; Bob (0.6) should be dropped
-        result = _query_candidates(centroid, top_k=5, min_similarity=0.5, similarity_band=0.1)
+    rows = [mock_identity_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1, image_count=3)]
+    with (
+        patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.proposals.Image") as MockImage,
+    ):
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        MockImage.objects.filter.return_value = chainable_qs([])
+        result = _query_candidates(query_centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
     assert len(result) == 1
     assert result[0].identity_id == uuid.UUID(int=1)
 
 
-def test_query_candidates_similarity_band_keeps_competitive_alternatives():
+def test_query_candidates_similarity_from_centroid_distance(query_centroid):
     from id_dedup.dedup.service.proposals import _query_candidates
 
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
+    rows = [mock_identity_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1)]
+    with (
+        patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.proposals.Image") as MockImage,
+    ):
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        MockImage.objects.filter.return_value = chainable_qs([])
+        result = _query_candidates(query_centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
+    assert abs(result[0].similarity - 0.9) < 1e-5
+
+
+def test_query_candidates_image_count_from_identity_row(query_centroid):
+    from id_dedup.dedup.service.proposals import _query_candidates
+
+    rows = [mock_identity_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1, image_count=7)]
+    with (
+        patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.proposals.Image") as MockImage,
+    ):
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        MockImage.objects.filter.return_value = chainable_qs([])
+        result = _query_candidates(query_centroid, top_k=5, min_similarity=0.6, similarity_band=0.0)
+    assert result[0].matched_image_count == 7
+
+
+def test_query_candidates_similarity_band_drops_weak_alternatives(query_centroid):
+    from id_dedup.dedup.service.proposals import _query_candidates
+
     rows = [
-        mock_image_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.12),  # sim≈0.88
-        mock_image_row(identity_id=uuid.UUID(int=2), display_name="Bob",   distance=0.15),  # sim≈0.85
+        mock_identity_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.1),   # sim=0.9
+        mock_identity_row(identity_id=uuid.UUID(int=2), display_name="Bob",   distance=0.4),   # sim=0.6
     ]
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs(rows)
+    with (
+        patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.proposals.Image") as MockImage,
+    ):
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        MockImage.objects.filter.return_value = chainable_qs([])
+        # band=0.1 → threshold=0.8; Bob (0.6) should be dropped
+        result = _query_candidates(query_centroid, top_k=5, min_similarity=0.5, similarity_band=0.1)
+    assert len(result) == 1
+    assert result[0].identity_id == uuid.UUID(int=1)
+
+
+def test_query_candidates_similarity_band_keeps_competitive_alternatives(query_centroid):
+    from id_dedup.dedup.service.proposals import _query_candidates
+
+    rows = [
+        mock_identity_row(identity_id=uuid.UUID(int=1), display_name="Alice", distance=0.12),  # sim≈0.88
+        mock_identity_row(identity_id=uuid.UUID(int=2), display_name="Bob",   distance=0.15),  # sim≈0.85
+    ]
+    with (
+        patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.proposals.Image") as MockImage,
+    ):
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        MockImage.objects.filter.return_value = chainable_qs([])
         # band=0.1 → both within 0.1 of best, both should survive
-        result = _query_candidates(centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
+        result = _query_candidates(query_centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
     assert len(result) == 2
 
 
-def test_query_candidates_respects_top_k():
+def test_query_candidates_respects_top_k(query_centroid):
     from id_dedup.dedup.service.proposals import _query_candidates
 
-    centroid = np.ones(512, dtype=np.float32)
-    centroid /= np.linalg.norm(centroid)
-    rows = [mock_image_row(identity_id=uuid.UUID(int=i), display_name=f"Person{i}", distance=0.05 * i)
+    rows = [mock_identity_row(identity_id=uuid.UUID(int=i), display_name=f"Person{i}", distance=0.05 * i)
             for i in range(1, 8)]
-    with patch("id_dedup.dedup.service.proposals.Image") as MockImage:
-        MockImage.objects.filter.return_value = chainable_qs(rows)
-        result = _query_candidates(centroid, top_k=3, min_similarity=0.0, similarity_band=0.0)
-    assert len(result) <= 3
+    with (
+        patch("id_dedup.dedup.service.proposals.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.proposals.Image") as MockImage,
+    ):
+        MockIdentity.objects.filter.return_value = chainable_qs(rows)
+        MockImage.objects.filter.return_value = chainable_qs([])
+        result = _query_candidates(query_centroid, top_k=3, min_similarity=0.0, similarity_band=0.0)
+    assert len(result) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -658,6 +658,61 @@ def test_persist_assignments_skips_deleted_identity():
     assert summary["total_clusters"] == 1
     assert summary["assigned"] == 1
     assert summary["new_identities"] == 0
+
+
+def test_persist_assignments_saves_centroid_on_identity():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import persist_assignments
+    from tests.unit.helpers import unit_vector
+
+    embedding = unit_vector(seed=42)
+    identity_id = str(uuid.uuid4())
+    assignments = {"0": {"identity_id": identity_id, "display_name": "Alice", "is_new": True}}
+    member = ClusterMember(file=pathlib.Path(__file__), embedding=embedding)
+    proposal = ClusterProposal(members=[member], centroid=unit_vector(seed=1), proposed_matches=[])
+
+    mock_identity = MagicMock()
+    with (
+        patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+    ):
+        MockIdentity.objects.get_or_create.return_value = (mock_identity, True)
+        MockImage.objects.filter.return_value.values_list.return_value = [embedding]
+        with patch.object(pathlib.Path, "exists", return_value=True):
+            persist_assignments(assignments, [proposal], tmpdir_name=None)
+
+    mock_identity.save.assert_called_once()
+    save_kwargs = mock_identity.save.call_args[1]
+    assert "centroid" in save_kwargs["update_fields"]
+    assert "image_count" in save_kwargs["update_fields"]
+    assert mock_identity.image_count == 1
+
+
+def test_persist_assignments_centroid_is_unit_vector():
+    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.dedup.service.proposals import ClusterProposal
+    from id_dedup.dedup.service.workflow import persist_assignments
+    from tests.unit.helpers import unit_vector
+
+    emb1, emb2 = unit_vector(seed=10), unit_vector(seed=11)
+    identity_id = str(uuid.uuid4())
+    assignments = {"0": {"identity_id": identity_id, "display_name": "Alice", "is_new": True}}
+    member = ClusterMember(file=pathlib.Path(__file__), embedding=emb1)
+    proposal = ClusterProposal(members=[member], centroid=unit_vector(seed=1), proposed_matches=[])
+
+    mock_identity = MagicMock()
+    with (
+        patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
+        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+    ):
+        MockIdentity.objects.get_or_create.return_value = (mock_identity, True)
+        MockImage.objects.filter.return_value.values_list.return_value = [emb1, emb2]
+        with patch.object(pathlib.Path, "exists", return_value=True):
+            persist_assignments(assignments, [proposal], tmpdir_name=None)
+
+    saved_centroid = np.array(mock_identity.centroid)
+    assert abs(np.linalg.norm(saved_centroid) - 1.0) < 1e-5
 
 
 def test_persist_assignments_cleans_up_temp_dir(tmp_path):

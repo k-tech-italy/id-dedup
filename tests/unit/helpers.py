@@ -16,13 +16,19 @@ def chainable_qs(rows: list) -> MagicMock:
     return qs
 
 
-def mock_image_row(identity_id: uuid.UUID, display_name: str, distance: float) -> MagicMock:
-    """Minimal stand-in for an Image ORM row annotated with CosineDistance."""
-    img = MagicMock()
-    img.identity_id = identity_id
-    img.distance = distance
-    img.identity.display_name = display_name
-    return img
+def mock_identity_row(
+    identity_id: uuid.UUID,
+    display_name: str,
+    distance: float,
+    image_count: int = 1,
+) -> MagicMock:
+    """Minimal stand-in for an Identity ORM row annotated with CosineDistance."""
+    row = MagicMock()
+    row.id = identity_id
+    row.display_name = display_name
+    row.distance = distance
+    row.image_count = image_count
+    return row
 
 
 def unit_vector(seed: int) -> np.ndarray:

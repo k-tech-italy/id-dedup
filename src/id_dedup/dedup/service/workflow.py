@@ -5,11 +5,14 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from django.core.files import File
 from django.db import transaction
 
 from .. import pipeline
 from ..models import Identity, Image
+from ..pipeline import normalised_mean
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -230,6 +233,12 @@ def persist_assignments(
                     embedding=member.embedding,
                     source_image=File(f, name=dest_name),
                 )
+
+        all_embeddings = list(Image.objects.filter(identity=identity).values_list("embedding", flat=True))
+        if all_embeddings:
+            identity.centroid = normalised_mean(np.stack(all_embeddings)).tolist()
+            identity.image_count = len(all_embeddings)
+            identity.save(update_fields=["centroid", "image_count", "updated_at"])
 
     if tmpdir_name:
         tmpdir_path = Path(tmpdir_name)

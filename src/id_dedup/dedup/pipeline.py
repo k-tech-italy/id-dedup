@@ -24,6 +24,12 @@ def _get_app() -> FaceAnalysis:
     return _app
 
 
+def normalised_mean(vecs: np.ndarray) -> np.ndarray:
+    """L2-normalised mean of a stack of unit vectors — stable centroid in cosine space."""
+    mean = vecs.mean(axis=0)
+    return mean / np.linalg.norm(mean)
+
+
 def extract_embedding(image_path: str | pathlib.Path) -> np.ndarray | None:
     """Return the 512-d face embedding for the most prominent face in the image, or None."""
     img = cv2.imread(str(image_path))

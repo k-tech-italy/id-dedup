@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from pgvector.django import CosineDistance
 
-from ..models import Image
+from ..models import Identity, Image
+
+from ..pipeline import normalised_mean
 
 if TYPE_CHECKING:
     import uuid
@@ -19,7 +21,7 @@ class IdentityMatch:
     identity_id: uuid.UUID  # avoids loading Identity objects unless needed
     display_name: str
     similarity: float  # cosine similarity in [0, 1]; higher = better
-    matched_image_count: int  # how many of this identity's images were near the centroid
+    matched_image_count: int  # total images stored for this identity
     image_url: str | None = None
 
 
@@ -47,12 +49,10 @@ class ClusterProposal:
 
 
 def _centroid(members: list[ClusterMember]) -> np.ndarray:
-    """Mean of L2-normalised embeddings, re-normalised — stable centroid in cosine space."""
+    """Centroid of a cluster expressed as a unit vector."""
     if len(members) == 1:
         return members[0].embedding
-    vecs = np.stack([m.embedding for m in members])
-    mean = vecs.mean(axis=0)
-    return mean / np.linalg.norm(mean)
+    return normalised_mean(np.stack([m.embedding for m in members]))
 
 
 def _query_candidates(
@@ -64,41 +64,39 @@ def _query_candidates(
     """
     Find the top_k closest existing identities to a centroid.
 
-    Fetches all assigned images within min_similarity, collapses to one entry
-    per identity (best similarity + count of matching images), then applies
-    the similarity_band filter to drop alternatives that aren't competitive
-    with the best match.
+    Queries Identity.centroid directly — O(M identities) with a DB-level LIMIT,
+    not O(N images). Applies the similarity_band filter to drop alternatives
+    that aren't competitive with the best match.
     """
     max_distance = 1.0 - min_similarity
 
-    rows = (
-        Image.objects.filter(identity__isnull=False)
-        .annotate(distance=CosineDistance("embedding", centroid.tolist()))
+    identity_rows = list(
+        Identity.objects.filter(centroid__isnull=False)
+        .annotate(distance=CosineDistance("centroid", centroid.tolist()))
         .filter(distance__lte=max_distance)
-        .select_related("identity")
-        .order_by("distance")
+        .order_by("distance")[:top_k]
     )
 
-    # Collapse to one entry per identity: highest similarity + count of close images
-    best: dict[uuid.UUID, IdentityMatch] = {}
-    for img in rows:
-        sim = 1.0 - float(img.distance)
-        pk = img.identity_id
-        if pk not in best:
-            img_url = img.source_image.url if img.source_image else None
-            best[pk] = IdentityMatch(
-                identity_id=pk,
-                display_name=img.identity.display_name,
-                similarity=sim,
-                matched_image_count=1,
-                image_url=img_url,
-            )
-        else:
-            entry = best[pk]
-            entry.matched_image_count += 1
-            entry.similarity = max(entry.similarity, sim)
+    if not identity_rows:
+        return []
 
-    ranked = sorted(best.values(), key=lambda m: m.similarity, reverse=True)[:top_k]
+    # Fetch one representative image URL per matched identity (bounded by top_k)
+    identity_pks = [row.id for row in identity_rows]
+    image_url_map: dict[uuid.UUID, str | None] = {}
+    for img in Image.objects.filter(identity_id__in=identity_pks).order_by("created_at"):
+        if img.identity_id not in image_url_map:
+            image_url_map[img.identity_id] = img.source_image.url if img.source_image else None
+
+    ranked = [
+        IdentityMatch(
+            identity_id=row.id,
+            display_name=row.display_name,
+            similarity=1.0 - float(row.distance),
+            matched_image_count=row.image_count,
+            image_url=image_url_map.get(row.id),
+        )
+        for row in identity_rows
+    ]
 
     # Drop alternatives that aren't competitive with the best match
     if ranked and similarity_band > 0:
