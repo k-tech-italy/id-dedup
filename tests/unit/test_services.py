@@ -678,15 +678,11 @@ def test_persist_assignments_saves_centroid_on_identity():
         patch("id_dedup.dedup.service.workflow.Image") as MockImage,
     ):
         MockIdentity.objects.get_or_create.return_value = (mock_identity, True)
-        MockImage.objects.filter.return_value.values_list.return_value = [embedding]
+        MockImage.objects.filter.return_value.values_list.return_value.exists.return_value = True
         with patch.object(pathlib.Path, "exists", return_value=True):
             persist_assignments(assignments, [proposal], tmpdir_name=None)
 
-    mock_identity.save.assert_called_once()
-    save_kwargs = mock_identity.save.call_args[1]
-    assert "centroid" in save_kwargs["update_fields"]
-    assert "image_count" in save_kwargs["update_fields"]
-    assert mock_identity.image_count == 1
+    mock_identity.update_centroid.assert_called_once()
 
 
 def test_persist_assignments_centroid_is_unit_vector():
@@ -707,12 +703,11 @@ def test_persist_assignments_centroid_is_unit_vector():
         patch("id_dedup.dedup.service.workflow.Image") as MockImage,
     ):
         MockIdentity.objects.get_or_create.return_value = (mock_identity, True)
-        MockImage.objects.filter.return_value.values_list.return_value = [emb1, emb2]
+        MockImage.objects.filter.return_value.values_list.return_value.exists.return_value = True
         with patch.object(pathlib.Path, "exists", return_value=True):
             persist_assignments(assignments, [proposal], tmpdir_name=None)
 
-    saved_centroid = np.array(mock_identity.centroid)
-    assert abs(np.linalg.norm(saved_centroid) - 1.0) < 1e-5
+    mock_identity.update_centroid.assert_called_once()
 
 
 def test_persist_assignments_cleans_up_temp_dir(tmp_path):

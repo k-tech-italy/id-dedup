@@ -1,8 +1,14 @@
 import uuid
-from typing import override
+from typing import TYPE_CHECKING, override
 
+import numpy as np
 from django.db import models
 from pgvector import django as djvector
+
+from .pipeline import normalised_mean
+
+if TYPE_CHECKING:
+    from django.db.models.query import ValuesQuerySet
 
 
 class Identity(models.Model):
@@ -26,6 +32,11 @@ class Identity(models.Model):
 
     class Meta:  # noqa: D106
         indexes = [djvector.HnswIndex(name="identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"])]
+
+    def update_centroid(self, embeddings: "ValuesQuerySet[Image, list[float]]") -> None:
+        self.image_count = embeddings.count()
+        self.centroid = normalised_mean(np.stack(list(embeddings))).tolist()
+        self.save(update_fields=["centroid", "image_count", "updated_at"])
 
     @override
     def __str__(self):
