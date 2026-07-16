@@ -231,9 +231,7 @@ def persist_assignments(
                     source_image=File(f, name=dest_name),
                 )
 
-        all_embeddings = Image.objects.filter(identity=identity).values_list("embedding", flat=True)
-        if all_embeddings.exists():
-            identity.update_centroid(all_embeddings)
+        identity.update_centroid()
 
     if tmpdir_name:
         tmpdir_path = Path(tmpdir_name)

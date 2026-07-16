@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from django.core.files.storage import default_storage
 from pgvector.django import CosineDistance
 
 from ..models import Identity, Image
@@ -80,12 +81,17 @@ def _query_candidates(
     if not identity_rows:
         return []
 
-    # Fetch one representative image URL per matched identity (bounded by top_k)
+    # Fetch one representative image URL per matched identity (bounded by top_k).
+    # DISTINCT ON (identity_id) with matching ORDER BY picks the earliest image per identity
+    # and avoids fetching the 512-dim embedding column entirely.
     identity_pks = [row.id for row in identity_rows]
-    image_url_map: dict[uuid.UUID, str | None] = {}
-    for img in Image.objects.filter(identity_id__in=identity_pks).order_by("created_at"):
-        if img.identity_id not in image_url_map:
-            image_url_map[img.identity_id] = img.source_image.url if img.source_image else None
+    image_url_map: dict[uuid.UUID, str | None] = {
+        iid: default_storage.url(path) if path else None
+        for iid, path in Image.objects.filter(identity_id__in=identity_pks)
+        .order_by("identity_id", "created_at")
+        .distinct("identity_id")
+        .values_list("identity_id", "source_image")
+    }
 
     ranked = [
         IdentityMatch(
