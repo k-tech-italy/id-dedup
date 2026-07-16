@@ -675,14 +675,13 @@ def test_persist_assignments_saves_centroid_on_identity():
     mock_identity = MagicMock()
     with (
         patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
-        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+        patch("id_dedup.dedup.service.workflow.Image"),
     ):
         MockIdentity.objects.get_or_create.return_value = (mock_identity, True)
-        MockImage.objects.filter.return_value.values_list.return_value.exists.return_value = True
         with patch.object(pathlib.Path, "exists", return_value=True):
             persist_assignments(assignments, [proposal], tmpdir_name=None)
 
-    mock_identity.update_centroid.assert_called_once()
+    mock_identity.update_centroid.assert_called_once_with()
 
 
 def test_persist_assignments_centroid_is_unit_vector():
@@ -700,14 +699,13 @@ def test_persist_assignments_centroid_is_unit_vector():
     mock_identity = MagicMock()
     with (
         patch("id_dedup.dedup.service.workflow.Identity") as MockIdentity,
-        patch("id_dedup.dedup.service.workflow.Image") as MockImage,
+        patch("id_dedup.dedup.service.workflow.Image"),
     ):
         MockIdentity.objects.get_or_create.return_value = (mock_identity, True)
-        MockImage.objects.filter.return_value.values_list.return_value.exists.return_value = True
         with patch.object(pathlib.Path, "exists", return_value=True):
             persist_assignments(assignments, [proposal], tmpdir_name=None)
 
-    mock_identity.update_centroid.assert_called_once()
+    mock_identity.update_centroid.assert_called_once_with()
 
 
 def test_persist_assignments_cleans_up_temp_dir(tmp_path):

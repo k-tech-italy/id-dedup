@@ -1,14 +1,13 @@
 import uuid
-from typing import TYPE_CHECKING, override
+from typing import override
 
 import numpy as np
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from pgvector import django as djvector
 
 from .pipeline import normalised_mean
-
-if TYPE_CHECKING:
-    from django.db.models.query import ValuesQuerySet
 
 
 class Identity(models.Model):
@@ -33,9 +32,19 @@ class Identity(models.Model):
     class Meta:  # noqa: D106
         indexes = [djvector.HnswIndex(name="identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"])]
 
-    def update_centroid(self, embeddings: "ValuesQuerySet[Image, list[float]]") -> None:
-        self.image_count = embeddings.count()
-        self.centroid = normalised_mean(np.stack(list(embeddings))).tolist()
+    def update_centroid(self) -> None:
+        # TODO: replace with pgvector Avg aggregate once the library exports it
+        # publicly — will shift mean computation to the DB and eliminate the
+        # O(N) embedding transfer. Tracked: pgvector/pgvector-python#Avg.
+        embeddings = list(
+            Image.objects.filter(identity=self).values_list("embedding", flat=True)
+        )
+        if not embeddings:
+            self.centroid = None
+            self.image_count = 0
+        else:
+            self.image_count = len(embeddings)
+            self.centroid = normalised_mean(np.stack(embeddings)).tolist()
         self.save(update_fields=["centroid", "image_count", "updated_at"])
 
     @override
@@ -73,3 +82,14 @@ class Image(models.Model):
     @override
     def __str__(self):
         return self.source_image.name
+
+
+@receiver(post_delete, sender=Image)
+def _refresh_centroid_on_image_delete(sender, instance, **kwargs):
+    if instance.identity_id is None:
+        return
+    try:
+        identity = Identity.objects.get(pk=instance.identity_id)
+    except Identity.DoesNotExist:
+        return  # identity was also deleted
+    identity.update_centroid()
