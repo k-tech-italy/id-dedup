@@ -15,7 +15,7 @@ def test_identity_update_centroid_sets_image_count():
     emb = unit_vector(seed=42)
 
     with patch("id_dedup.dedup.models.Image") as MockImage, patch.object(Identity, "save"):
-        MockImage.objects.filter.return_value.values_list.return_value = [emb]
+        MockImage.objects.filter.return_value.aggregate.return_value = {"avg_embedding": emb, "count": 1}
         identity.update_centroid()
 
     assert identity.image_count == 1
@@ -25,10 +25,10 @@ def test_identity_update_centroid_produces_unit_vector():
     from id_dedup.dedup.models import Identity
 
     identity = Identity.__new__(Identity)
-    emb1, emb2 = unit_vector(seed=10), unit_vector(seed=11)
+    emb = unit_vector(seed=10)
 
     with patch("id_dedup.dedup.models.Image") as MockImage, patch.object(Identity, "save"):
-        MockImage.objects.filter.return_value.values_list.return_value = [emb1, emb2]
+        MockImage.objects.filter.return_value.aggregate.return_value = {"avg_embedding": emb, "count": 2}
         identity.update_centroid()
 
     assert abs(np.linalg.norm(np.array(identity.centroid)) - 1.0) < 1e-5
@@ -40,7 +40,7 @@ def test_identity_update_centroid_calls_save_with_correct_update_fields():
     identity = Identity.__new__(Identity)
 
     with patch("id_dedup.dedup.models.Image") as MockImage, patch.object(Identity, "save") as mock_save:
-        MockImage.objects.filter.return_value.values_list.return_value = [unit_vector(seed=0)]
+        MockImage.objects.filter.return_value.aggregate.return_value = {"avg_embedding": unit_vector(seed=0), "count": 1}
         identity.update_centroid()
 
     mock_save.assert_called_once()
@@ -58,7 +58,7 @@ def test_identity_update_centroid_zeros_out_when_no_images():
     identity.image_count = 3
 
     with patch("id_dedup.dedup.models.Image") as MockImage, patch.object(Identity, "save") as mock_save:
-        MockImage.objects.filter.return_value.values_list.return_value = []
+        MockImage.objects.filter.return_value.aggregate.return_value = {"avg_embedding": None, "count": 0}
         identity.update_centroid()
 
     assert identity.centroid is None

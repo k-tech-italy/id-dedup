@@ -3,11 +3,10 @@ from typing import override
 
 import numpy as np
 from django.db import models
+from django.db.models import Avg, Count
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from pgvector import django as djvector
-
-from .pipeline import normalised_mean
 
 
 class Identity(models.Model):
@@ -33,18 +32,18 @@ class Identity(models.Model):
         indexes = [djvector.HnswIndex(name="identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"])]
 
     def update_centroid(self) -> None:
-        # TODO: replace with pgvector Avg aggregate once the library exports it
-        # publicly — will shift mean computation to the DB and eliminate the
-        # O(N) embedding transfer. Tracked: pgvector/pgvector-python#Avg.
-        embeddings = list(
-            Image.objects.filter(identity=self).values_list("embedding", flat=True)
+        result = Image.objects.filter(identity=self).aggregate(
+            avg_embedding=Avg("embedding"),
+            count=Count("id"),
         )
-        if not embeddings:
+        avg, count = result["avg_embedding"], result["count"]
+        if avg is None:
             self.centroid = None
             self.image_count = 0
         else:
-            self.image_count = len(embeddings)
-            self.centroid = normalised_mean(np.stack(embeddings)).tolist()
+            arr = np.array(avg)
+            self.centroid = (arr / np.linalg.norm(arr)).tolist()
+            self.image_count = count
         self.save(update_fields=["centroid", "image_count", "updated_at"])
 
     @override
