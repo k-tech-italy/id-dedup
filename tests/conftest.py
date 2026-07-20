@@ -50,7 +50,7 @@ def pytest_configure(config):
             TEMPLATES=[
                 {
                     "BACKEND": "django.template.backends.django.DjangoTemplates",
-                    "DIRS": [],
+                    "DIRS": [pathlib.Path(__file__).parent.parent / "src" / "id_dedup" / "templates"],
                     "APP_DIRS": True,
                     "OPTIONS": {
                         "context_processors": [
@@ -62,6 +62,9 @@ def pytest_configure(config):
                 },
             ],
             SESSION_ENGINE="django.contrib.sessions.backends.db",
+            LOGIN_URL="/accounts/login/",
+            LOGIN_REDIRECT_URL="/",
+            LOGOUT_REDIRECT_URL="/",
         )
         django.setup()
 

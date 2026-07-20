@@ -3,56 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>id-dedup</title>
+    <script src="{% static 'js/bundle.js' %}"></script>
 </head>
-<body class="bg-gray-800">
-<script src="{% static 'js/bundle.js' %}"></script>
-<div class="card flex-center">
-    <h3>Writes Upside-Down</h3>
-    <p>The Zero Gravity Pen can be used to write in any orientation, including upside-down. It even works in outer
-        space.</p>
-
-    <button id="toggleDark" onclick="document.body.classList.toggle('dark')">Toggle Dark Mode
-    </button>
-</div>
-<p class="text-chestnut">Custom color from theme</p>
-
-<div class="flex flex-col my-4 mx-2">
-    <label class="text-amber-200"><input type="checkbox" checked> Browser default</label>
-    <label class="text-amber-200"><input type="checkbox" class="accent-teal-500" checked> Accent</label>
-</div>
-
-
-<p class="sm:text-7xl text-5xl">Traditional scaling</p>
-<p class="text-[min(10vw,70px)] selection:bg-green-400 selection:text-white">Linear scaling with fluid text with custom selection color</p>
-
-<label class="my-4 block">
-    <input type="file"
-           class="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-violet-50 file:px-4
-file:font-semibold file:text-violet-700 hover:file:bg-violet-100">
-</label>
-
-<div class="max-w-lg mx-auto p-8">
-<details class="open:bg-white">
-    <summary class="text-sm  leading-6 text-slate-900 dark:text-white font-semibold select-none">Header</summary>
-    <div class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
-    Detail here. Lorem ipsum. Bla bla bla
+<body class="bg-gray-950 text-gray-100 min-h-screen antialiased flex items-center justify-center px-4">
+  <div class="text-center">
+    <svg class="w-12 h-12 text-sky-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
+    </svg>
+    <h1 class="text-3xl font-semibold tracking-tight mb-2">id-dedup</h1>
+    <p class="text-gray-500 mb-8">Face image deduplication and identity management</p>
+    {% if user.is_authenticated %}
+    <div class="flex items-center justify-center gap-3">
+      <a href="{% url 'wizard:upload' %}" class="inline-block rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-500 transition-colors">Go to Dashboard</a>
+      <form method="post" action="{% url 'logout' %}" class="inline">
+        {% csrf_token %}
+        <button type="submit" class="rounded-lg border border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors cursor-pointer">Logout</button>
+      </form>
     </div>
-</details>
-</div>
-
-<!-- caret -->
-<textarea class="w-full caret-pink-500 p-2 text-white" placeholder="Type something to see pink caret"></textarea>
-
-// To showcase the demo of dark theme. Copy paste :)
-<script type="text/javascript">
-    document.addEventListener("DOMContentLoaded", () => {
-        const toggleDark = document.getElementById('toggleDark')
-        toggleDark.addEventListener('click', function () {
-            document.documentElement.classList.toggle('dark')
-            alert("click!")
-        });
-    });
-</script>
-
+    {% else %}
+    <a href="{% url 'login' %}" class="inline-block rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-500 transition-colors">Login</a>
+    {% endif %}
+  </div>
 </body>
 </html>
