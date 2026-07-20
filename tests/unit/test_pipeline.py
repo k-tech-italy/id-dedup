@@ -153,3 +153,11 @@ def test_split_does_not_recompute_embeddings(splittable_result):
     splittable_result.split(0, {original.file})
     moved = next(m for m in splittable_result.clusters[-1] if m.file == original.file)
     assert moved.embedding is original.embedding
+
+
+def test_split_to_cluster_moves_file_to_specified_group(splittable_result):
+    target = splittable_result.clusters[0][0].file
+    new_label = splittable_result.split(0, {target}, to_cluster=1)
+    assert new_label == 1
+    assert any(m.file == target for m in splittable_result.clusters[1])
+    assert all(m.file != target for m in splittable_result.clusters.get(-1, []))
