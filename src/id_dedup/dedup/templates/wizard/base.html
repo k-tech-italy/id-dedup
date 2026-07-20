@@ -27,6 +27,16 @@
         <span class="w-px h-4 bg-gray-700 hidden sm:block"></span>
         {% endif %}
         <span class="text-gray-500" id="headerProgress">{{ header_progress|default:"" }}</span>
+        <span class="w-px h-4 bg-gray-700"></span>
+        {% if user.is_authenticated %}
+        <span class="hidden sm:inline text-gray-400">{{ user.username }}</span>
+        <form method="post" action="{% url 'logout' %}" class="inline">
+          {% csrf_token %}
+          <button type="submit" class="text-gray-500 hover:text-gray-300 transition-colors cursor-pointer text-sm">Logout</button>
+        </form>
+        {% else %}
+        <a href="{% url 'login' %}" class="text-gray-500 hover:text-gray-300 transition-colors">Login</a>
+        {% endif %}
       </div>
     </div>
   </header>

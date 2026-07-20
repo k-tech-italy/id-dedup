@@ -6,6 +6,8 @@ import shutil
 import tempfile
 from typing import TYPE_CHECKING, Any, overload
 
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseBadRequest
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
@@ -130,7 +132,7 @@ def _adjudication_context(request: HttpRequest) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-class Upload(View):
+class Upload(LoginRequiredMixin, View):
     """Step 1 — accept image uploads, run clustering, redirect to review."""
 
     def get(self, request: HttpRequest) -> HttpResponse:
@@ -172,6 +174,7 @@ class Upload(View):
 
 
 @require_safe
+@login_required
 def review(request: HttpRequest) -> HttpResponse:
     """Step 2 — show clustered groups for manual split/merge before matching."""
     raw = _get_from_session(request, "cluster_result")
@@ -194,6 +197,7 @@ def review(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
+@login_required
 def split(request: HttpRequest) -> HttpResponse:
     """Move files out of one cluster into another (or singletons) during review."""
     raw = _get_from_session(request, "cluster_result")
@@ -242,6 +246,7 @@ def split(request: HttpRequest) -> HttpResponse:
 
 
 @require_safe
+@login_required
 def review_image(request: HttpRequest, path: str) -> FileResponse:
     """Serve an uploaded image from the wizard temp directory."""
     tmpdir_name = request.session.get("wizard_tmpdir")
@@ -260,6 +265,7 @@ def review_image(request: HttpRequest, path: str) -> FileResponse:
 
 
 @require_POST
+@login_required
 def review_save(request: HttpRequest) -> HttpResponse:
     """Finalize clusters, compute identity-match proposals, redirect to adjudication."""
     raw = _get_from_session(request, "cluster_result")
@@ -283,6 +289,7 @@ def review_save(request: HttpRequest) -> HttpResponse:
 
 
 @require_safe
+@login_required
 def adjudication(request: HttpRequest) -> HttpResponse:
     """Step 3 — review identity-match proposals and assign each cluster."""
     context = _adjudication_context(request)
@@ -296,6 +303,7 @@ def adjudication(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
+@login_required
 def adjudication_next(request: HttpRequest) -> HttpResponse:
     """Advance to the next unassigned cluster or persist and finish."""
     adj_index = _get_from_session(request, "adj_index", 0)
@@ -323,6 +331,7 @@ def adjudication_next(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
+@login_required
 def adjudication_prev(request: HttpRequest) -> HttpResponse:
     """Go back to the previous cluster proposal."""
     adj_index = _get_from_session(request, "adj_index", 0)
@@ -334,6 +343,7 @@ def adjudication_prev(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
+@login_required
 def assign(request: HttpRequest) -> HttpResponse:
     """Assign the current cluster to an existing identity and advance."""
     identity_id = request.POST.get("identity_id")
@@ -378,6 +388,7 @@ def assign(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
+@login_required
 def new_identity(request: HttpRequest) -> HttpResponse:
     """Create a new identity for the current cluster and advance."""
     display_name = request.POST.get("display_name", "").strip()
@@ -421,6 +432,7 @@ def new_identity(request: HttpRequest) -> HttpResponse:
 
 
 @require_safe
+@login_required
 def search(request: HttpRequest) -> HttpResponse:
     """Search identities — returns HTML fragment for HTMX."""
     query = request.GET.get("q", "").strip()
@@ -445,6 +457,7 @@ def search(request: HttpRequest) -> HttpResponse:
 
 
 @require_safe
+@login_required
 def complete(request: HttpRequest) -> HttpResponse:
     """Step 4 — show the persistence summary after all clusters are assigned."""
     summary = _get_from_session(request, "summary")
