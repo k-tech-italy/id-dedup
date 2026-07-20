@@ -168,6 +168,14 @@ class TestWizardReviewSave:
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:upload")
 
+    @pytest.mark.django_db(transaction=True)
+    def test_save_removes_cluster_result_from_session(self, client):
+        from unittest.mock import patch
+        _setup_result(client, _result())
+        with patch("id_dedup.dedup.views.proposals.propose_matches", return_value=[]):
+            client.post(reverse("wizard:review_save"))
+        assert "wizard_cluster_result" not in client.session
+
 
 # ---------------------------------------------------------------------------
 # Adjudication
