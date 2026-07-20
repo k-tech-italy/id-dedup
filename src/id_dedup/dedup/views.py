@@ -268,6 +268,7 @@ def review_save(request: HttpRequest) -> HttpResponse:
     result = serializers.deserialize_result(raw)
 
     proposals_list = proposals.propose_matches(result)
+    request.session.pop("wizard_cluster_result", None)
     request.session["wizard_proposals"] = [serializers.serialize_proposal(p) for p in proposals_list]
     request.session["wizard_adj_index"] = 0
     request.session["wizard_assignments"] = {}

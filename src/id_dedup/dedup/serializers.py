@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import pathlib
 import uuid
 
@@ -10,15 +11,15 @@ from .service.proposals import ClusterProposal, IdentityMatch
 
 
 def serialize_member(m: ClusterMember) -> dict:
-    """Convert a ClusterMember to a JSON-safe dict (file path + embedding list)."""
-    return {"file": str(m.file), "embedding": m.embedding.tolist()}
+    """Convert a ClusterMember to a JSON-safe dict (file path + base64 embedding)."""
+    return {"file": str(m.file), "embedding": base64.b64encode(m.embedding.tobytes()).decode()}
 
 
 def deserialize_member(d: dict) -> ClusterMember:
     """Restore a ClusterMember from a dict produced by ``serialize_member``."""
     return ClusterMember(
         file=pathlib.Path(d["file"]),
-        embedding=np.array(d["embedding"], dtype=np.float32),
+        embedding=np.frombuffer(base64.b64decode(d["embedding"]), dtype=np.float32).copy(),
     )
 
 
@@ -66,7 +67,7 @@ def serialize_proposal(p: ClusterProposal) -> dict:
     """Convert a ClusterProposal to a JSON-safe dict (members + centroid + matches)."""
     return {
         "members": [serialize_member(m) for m in p.members],
-        "centroid": p.centroid.tolist(),
+        "centroid": base64.b64encode(p.centroid.tobytes()).decode(),
         "proposed_matches": [serialize_identity_match(m) for m in p.proposed_matches],
     }
 
@@ -75,6 +76,6 @@ def deserialize_proposal(d: dict) -> ClusterProposal:
     """Restore a ClusterProposal from a dict produced by ``serialize_proposal``."""
     return ClusterProposal(
         members=[deserialize_member(m) for m in d["members"]],
-        centroid=np.array(d["centroid"], dtype=np.float32),
+        centroid=np.frombuffer(base64.b64decode(d["centroid"]), dtype=np.float32).copy(),
         proposed_matches=[deserialize_identity_match(m) for m in d.get("proposed_matches", [])],
     )
