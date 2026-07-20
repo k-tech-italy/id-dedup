@@ -399,6 +399,16 @@ def test_apply_split_raises_when_both_filenames_and_file_path(splittable_result)
         apply_split(splittable_result, 0, filenames=["a.jpg"], file_path="a.jpg")
 
 
+def test_apply_split_to_specified_cluster(splittable_result):
+    from id_dedup.dedup.service.workflow import apply_split
+
+    file_path = "synthetic/person0/photo0.jpg"
+    result = apply_split(splittable_result, 0, file_path=file_path, to_cluster=1)
+    target = pathlib.Path(file_path)
+    assert any(m.file == target for m in result.clusters[1])
+    assert all(m.file != target for m in result.clusters[0])
+
+
 # ---------------------------------------------------------------------------
 # create_assignment
 # ---------------------------------------------------------------------------
