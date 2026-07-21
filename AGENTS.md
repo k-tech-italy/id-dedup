@@ -16,31 +16,31 @@
 
 | Path | Responsibility |
 |---|---|
-| `src/id_dedup/dedup/pipeline.py` | Stage 1 — Django-free. Embedding extraction, DBSCAN clustering, `ClusterResult` |
-| `src/id_dedup/dedup/service/proposals.py` | Stage 2 — ORM + pgvector. Identity matching, `ClusterProposal` |
-| `src/id_dedup/dedup/service/workflow.py` | Orchestration — uploads, split delegation, assignment CRUD, search, DB persistence |
-| `src/id_dedup/dedup/serializers.py` | Session serialization/deserialization for pipeline and service data structures |
-| `src/id_dedup/dedup/models.py` | `Identity` (UUID, display_name) and `Image` (UUID, 512-d VectorField, nullable FK) |
+| `src/id_dedup/dedup/pipeline.py` | Stage 1 — Django-free. `ClusterMember`, `ClusterResult`, embedding extraction, DBSCAN clustering, `normalised_mean()` |
+| `src/id_dedup/dedup/service/proposals.py` | Stage 2 — ORM + pgvector. `IdentityMatch`, `ClusterProposal`, identity matching against `Identity.centroid` |
+| `src/id_dedup/dedup/service/workflow.py` | Orchestration — uploads, file validation, split delegation, assignment CRUD, search, DB persistence |
+| `src/id_dedup/dedup/serializers.py` | Session serialization/deserialization (base64 for NumPy arrays) for pipeline and service data structures |
+| `src/id_dedup/dedup/models.py` | `Identity` (UUID, display_name, centroid VectorField, image_count) and `Image` (UUID, 512-d VectorField, nullable FK, source_image) |
 | `src/id_dedup/dedup/views.py` | 4-step wizard views, session helpers, HTMX partials |
 | `src/id_dedup/dedup/urls.py` | URL routes, `app_name="wizard"` |
-| `src/id_dedup/config/settings.py` | Django settings; `DATABASE_URL` from env |
-| `tests/conftest.py` | Session-scoped pipeline fixture; real example images at `tests/examples/` |
-| `tests/unit/conftest.py` | Synthetic unit fixtures — no DB, no real images |
-| `tests/unit/helpers.py` | `chainable_qs`, `mock_image_row`, `unit_vector` |
+| `src/id_dedup/config/settings.py` | Django settings; `DATABASE_URL`, `SECRET_KEY`, `DEBUG` from env |
+| `tests/conftest.py` | Session-scoped pipeline fixture, `splittable_result`, per-image/person parametrised fixtures; real example images at `tests/examples/` |
+| `tests/unit/conftest.py` | Synthetic unit fixtures (`unit_member`, `two_member_group`, `cluster_result_with_groups`, etc.) and `logged_in_client` |
+| `tests/unit/helpers.py` | `chainable_qs`, `mock_identity_row`, `unit_vector` |
 
 ## Architecture boundary rule
 
 > **`pipeline.py` has zero Django imports. `service/proposals.py` owns all ORM interaction for identity matching.**
 
 - Never import Django models, settings, or ORM in `pipeline.py`.
-- Never do NumPy/sklearn computation in `service/proposals.py`.
+- Never do sklearn/heavy-ML computation in `service/proposals.py`. Lightweight NumPy operations (e.g. `np.stack` for centroid computation) are acceptable.
 - `service/workflow.py` imports both `pipeline` and `models` — it is the orchestration layer that bridges ML results to DB persistence.
 
 This boundary is intentional: it allows the ML pipeline to be tested without a Django/DB setup. Violating it breaks that separation.
 
 ## DB writes: exactly one place
 
-Only `workflow.persist_assignments()` in `service/workflow.py` creates `Identity` and `Image` records (within `@transaction.atomic`). The `complete()` view calls it. `pipeline.py` and `service/proposals.py` are read-only with respect to the database.
+Only `workflow.persist_assignments()` in `service/workflow.py` creates `Identity` and `Image` records (within `@transaction.atomic`). It is called from the adjudication step views (`assign`, `new_identity`, `adjudication_next`) when the last proposal is processed — not from `complete()`. `complete()` is a read-only view that renders the persistence summary already stored in the session. `pipeline.py` and `service/proposals.py` are read-only with respect to the database.
 
 ## Running the project
 
@@ -48,7 +48,7 @@ Only `workflow.persist_assignments()` in `service/workflow.py` creates `Identity
 make develop            # npm install + uv venv + uv sync + direnv allow
 ./manage.py runserver   # requires DATABASE_URL set, pgvector extension in Postgres
 npm run build           # one-shot JS bundle
-NODE_WATCH=1 npm run build  # watch mode
+npm run watch           # watch mode
 pytest                  # run tests (plain pytest, not uv run pytest)
 ```
 
@@ -65,7 +65,7 @@ Copy `.env.example` → `.env` and fill in `DATABASE_URL` and `SECRET_KEY` befor
 ## Two-stage deduplication pipeline
 
 1. **Stage 1** (`process_images` in `pipeline.py`): extract 512-d ArcFace embeddings → L2-normalise → DBSCAN with cosine metric → `ClusterResult`. No DB access.
-2. **Stage 2** (`propose_matches` in `service/proposals.py`): compute centroid per cluster → pgvector `CosineDistance` query → collapse per identity → `similarity_band` filter → `ClusterProposal` list. Read-only DB.
+2. **Stage 2** (`propose_matches` in `service/proposals.py`): compute centroid per cluster → pgvector `CosineDistance` query against `Identity.centroid` → `similarity_band` filter → `ClusterProposal` list. Read-only DB.
 
 See [`.agents/docs/dedup-flow.md`](.agents/docs/dedup-flow.md) for the full technical walkthrough.
 
