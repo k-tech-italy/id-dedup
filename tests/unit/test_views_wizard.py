@@ -2,25 +2,17 @@ from __future__ import annotations
 
 import pathlib
 import uuid
+from unittest import mock
 
 import numpy as np
 import pytest
-from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
+from id_dedup.dedup import serializers
 from id_dedup.dedup.models import Identity
 from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
 from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _result() -> ClusterResult:
@@ -53,27 +45,27 @@ def _proposals(count: int = 3) -> list[ClusterProposal]:
             file=pathlib.Path(f"tests/cluster_{i}/photo.jpg"),
             embedding=np.zeros(512, dtype="float32"),
         )
-        proposals.append(ClusterProposal(
-            members=[member],
-            centroid=np.zeros(512, dtype="float32"),
-            proposed_matches=matches,
-        ))
+        proposals.append(
+            ClusterProposal(
+                members=[member],
+                centroid=np.zeros(512, dtype="float32"),
+                proposed_matches=matches,
+            ),
+        )
     return proposals
 
 
 def _setup_result(client, result: ClusterResult):
     """Store a serialized ClusterResult in the client session."""
-    from id_dedup.dedup.serializers import serialize_result
     session = client.session
-    session["wizard_cluster_result"] = serialize_result(result)
+    session["wizard_cluster_result"] = serializers.serialize_result(result)
     session.save()
 
 
 def _setup_proposals(client, proposals: list[ClusterProposal], adj_index: int = 0):
     """Store serialized proposals + index in the client session."""
-    from id_dedup.dedup.serializers import serialize_proposal
     session = client.session
-    session["wizard_proposals"] = [serialize_proposal(p) for p in proposals]
+    session["wizard_proposals"] = [serializers.serialize_proposal(p) for p in proposals]
     session["wizard_adj_index"] = adj_index
     session.save()
 
@@ -215,9 +207,8 @@ class TestWizardUpload:
 
     @pytest.mark.django_db(transaction=True)
     def test_post_with_valid_jpeg_redirects_to_review(self, logged_in_client):
-        from unittest.mock import patch
         jpeg = SimpleUploadedFile("photo.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100, content_type="image/jpeg")
-        with patch("id_dedup.dedup.service.workflow.process_uploads", return_value=ClusterResult()):
+        with mock.patch("id_dedup.dedup.service.workflow.process_uploads", return_value=ClusterResult()):
             resp = logged_in_client.post(reverse("wizard:upload"), {"images": [jpeg]})
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:review")
@@ -260,8 +251,7 @@ class TestWizardSplit:
             {"cluster_label": "0", "file": str(file_to_move)},
         )
 
-        from id_dedup.dedup.serializers import deserialize_result
-        updated = deserialize_result(logged_in_client.session["wizard_cluster_result"])
+        updated = serializers.deserialize_result(logged_in_client.session["wizard_cluster_result"])
         assert len(updated.clusters[0]) == 1
         assert updated.clusters[0][0].file == result.clusters[0][1].file
 
@@ -636,7 +626,7 @@ class TestWizardAdjudication:
         content = resp.content.decode()
         assert "<script>" not in content
         assert "&lt;script&gt;" in content
-        assert 'alert(1)' in content
+        assert "alert(1)" in content
 
     @pytest.mark.django_db(transaction=True)
     def test_search_includes_session_identities(self, logged_in_client):
@@ -653,7 +643,7 @@ class TestWizardAdjudication:
         content = resp.content.decode()
         assert "Session Person" in content
         assert "Another Session" in content
-        assert '(new)' in content
+        assert "(new)" in content
 
     @pytest.mark.django_db(transaction=True)
     def test_search_deduplicates_session_and_db(self, logged_in_client):
