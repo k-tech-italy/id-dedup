@@ -242,23 +242,23 @@ class TestWizardSplit:
         assert resp.status_code == 400
 
     @pytest.mark.django_db(transaction=True)
-    def test_split_filenames_list_payload_returns_200(self, client):
+    def test_split_filenames_list_payload_returns_200(self, logged_in_client):
         import json
         result = _result()
-        _setup_result(client, result)
+        _setup_result(logged_in_client, result)
         file_to_move = result.clusters[0][0].file
-        resp = client.post(
+        resp = logged_in_client.post(
             reverse("wizard:split"),
             {"cluster_label": "0", "files": json.dumps([file_to_move.name])},
         )
         assert resp.status_code == 200
 
     @pytest.mark.django_db(transaction=True)
-    def test_split_to_cluster_payload_returns_200(self, client):
+    def test_split_to_cluster_payload_returns_200(self, logged_in_client):
         result = _result()
-        _setup_result(client, result)
+        _setup_result(logged_in_client, result)
         file_to_move = result.clusters[0][0].file
-        resp = client.post(
+        resp = logged_in_client.post(
             reverse("wizard:split"),
             {"cluster_label": "0", "file": str(file_to_move), "to_cluster": "1"},
         )
@@ -283,25 +283,25 @@ class TestWizardReviewSave:
         assert resp.url == reverse("wizard:upload")
 
     @pytest.mark.django_db(transaction=True)
-    def test_save_removes_cluster_result_from_session(self, client):
+    def test_save_removes_cluster_result_from_session(self, logged_in_client):
         from unittest.mock import patch
-        _setup_result(client, _result())
+        _setup_result(logged_in_client, _result())
         with patch("id_dedup.dedup.views.proposals.propose_matches", return_value=[]):
-            client.post(reverse("wizard:review_save"))
-        assert "wizard_cluster_result" not in client.session
+            logged_in_client.post(reverse("wizard:review_save"))
+        assert "wizard_cluster_result" not in logged_in_client.session
 
     @pytest.mark.django_db(transaction=True)
-    def test_save_writes_proposals_to_session_and_redirects(self, client):
+    def test_save_writes_proposals_to_session_and_redirects(self, logged_in_client):
         from unittest.mock import patch
         fake_proposal = _proposals(1)[0]
-        _setup_result(client, _result())
+        _setup_result(logged_in_client, _result())
         with patch("id_dedup.dedup.views.proposals.propose_matches", return_value=[fake_proposal]):
-            resp = client.post(reverse("wizard:review_save"))
+            resp = logged_in_client.post(reverse("wizard:review_save"))
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:adjudication")
-        assert len(client.session["wizard_proposals"]) == 1
-        assert client.session["wizard_adj_index"] == 0
-        assert client.session["wizard_assignments"] == {}
+        assert len(logged_in_client.session["wizard_proposals"]) == 1
+        assert logged_in_client.session["wizard_adj_index"] == 0
+        assert logged_in_client.session["wizard_assignments"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -311,41 +311,41 @@ class TestWizardReviewSave:
 
 class TestWizardReviewImage:
     @pytest.mark.django_db(transaction=True)
-    def test_serves_file_from_tmpdir(self, client, tmp_path):
+    def test_serves_file_from_tmpdir(self, logged_in_client, tmp_path):
         img = tmp_path / "photo.jpg"
         img.write_bytes(b"\xff\xd8\xff" + b"\x00" * 10)
-        session = client.session
+        session = logged_in_client.session
         session["wizard_tmpdir"] = str(tmp_path)
         session.save()
 
-        resp = client.get(reverse("wizard:review_image", kwargs={"path": "photo.jpg"}))
+        resp = logged_in_client.get(reverse("wizard:review_image", kwargs={"path": "photo.jpg"}))
         assert resp.status_code == 200
 
     @pytest.mark.django_db(transaction=True)
-    def test_no_session_returns_404(self, client):
-        resp = client.get(reverse("wizard:review_image", kwargs={"path": "photo.jpg"}))
+    def test_no_session_returns_404(self, logged_in_client):
+        resp = logged_in_client.get(reverse("wizard:review_image", kwargs={"path": "photo.jpg"}))
         assert resp.status_code == 404
 
     @pytest.mark.django_db(transaction=True)
-    def test_missing_file_returns_404(self, client, tmp_path):
-        session = client.session
+    def test_missing_file_returns_404(self, logged_in_client, tmp_path):
+        session = logged_in_client.session
         session["wizard_tmpdir"] = str(tmp_path)
         session.save()
 
-        resp = client.get(reverse("wizard:review_image", kwargs={"path": "nonexistent.jpg"}))
+        resp = logged_in_client.get(reverse("wizard:review_image", kwargs={"path": "nonexistent.jpg"}))
         assert resp.status_code == 404
 
     @pytest.mark.django_db(transaction=True)
-    def test_path_outside_tmpdir_returns_404(self, client, tmp_path):
+    def test_path_outside_tmpdir_returns_404(self, logged_in_client, tmp_path):
         tmpdir = tmp_path / "uploads"
         tmpdir.mkdir()
         outside = tmp_path / "secret.txt"
         outside.write_text("sensitive")
-        session = client.session
+        session = logged_in_client.session
         session["wizard_tmpdir"] = str(tmpdir)
         session.save()
 
-        resp = client.get("/wizard/review/image/../secret.txt")
+        resp = logged_in_client.get("/wizard/review/image/../secret.txt")
         assert resp.status_code == 404
 
 
