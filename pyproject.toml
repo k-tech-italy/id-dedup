@@ -9,12 +9,14 @@ packages = [
 ]
 
 dependencies = [
+    "celery[redis]>=5.4",
     "django~=5.2",
     "insightface>=1.0.1",
     "numpy>=2.4.6",
     "opencv-python>=4.13.0.92",
     "pgvector>=0.5.0",
     "psycopg[binary]>=3.3.4",
+    "redis>=5.0",
     "scikit-learn>=1.9.0",
 ]
 
