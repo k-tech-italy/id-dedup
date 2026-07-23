@@ -34,8 +34,8 @@ Two-app architecture:
 | Path | Responsibility |
 |---|---|
 | `src/id_dedup/workflow/models.py` | `Identity` (UUID, centroid VectorField 512-d, HNSW index) and `Image` (UUID, nullable FK→Identity, embedding 512-d nullable, source_image, discarded bool). `embedding` is null at upload time; filled in by a future Celery task. |
-| `src/id_dedup/workflow/views.py` | Placeholder index view (`@login_required`); full views not yet implemented |
-| `src/id_dedup/workflow/urls.py` | `app_name="workflow"`, mounted at `/workflow/` |
+| `src/id_dedup/workflow/views.py` | Views not yet implemented |
+| `src/id_dedup/workflow/urls.py` | Views from `src/id_dedup/workflow/views.py` will be mounted here |
 | `src/id_dedup/workflow/migrations/0001_initial.py` | Creates `workflow_identity` and `workflow_image` tables |
 
 ### Shared
