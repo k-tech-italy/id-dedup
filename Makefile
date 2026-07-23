@@ -84,5 +84,5 @@ bump:  ## Bumps version
 build:  ## Builds the package
 	uv build --sdist
 
-worker:  ## Run Celery worker (requires REDIS_URL in env)
+worker: guard-REDIS_URL ## Run Celery worker (requires REDIS_URL in env)
 	celery -A id_dedup worker --loglevel=info
