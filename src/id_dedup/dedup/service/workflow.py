@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from django.core.files import File
 from django.db import transaction
 
-from .. import pipeline
+from id_dedup.ml import pipeline
 from ..models import Identity, Image
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from django.core.files.uploadedfile import UploadedFile
 
-    from ..pipeline import ClusterResult
+    from id_dedup.ml.pipeline import ClusterResult
     from .proposals import ClusterProposal
 
 

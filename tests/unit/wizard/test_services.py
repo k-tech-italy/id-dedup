@@ -147,7 +147,7 @@ def test_propose_matches_groups_precede_singletons(mock_query, cluster_result_wi
 
 @patch("id_dedup.dedup.service.proposals._query_candidates", return_value=[])
 def test_propose_matches_empty_result_returns_empty(mock_query):
-    from id_dedup.dedup.pipeline import ClusterResult
+    from id_dedup.ml.pipeline import ClusterResult
     from id_dedup.dedup.service.proposals import propose_matches
 
     assert propose_matches(ClusterResult()) == []
@@ -269,7 +269,7 @@ def test_query_candidates_respects_top_k(query_centroid):
 def test_process_uploads_saves_files_and_calls_pipeline(tmp_path):
     from django.core.files.uploadedfile import SimpleUploadedFile
 
-    from id_dedup.dedup.pipeline import ClusterResult
+    from id_dedup.ml.pipeline import ClusterResult
     from id_dedup.dedup.service.workflow import process_uploads
 
     uploads = [
@@ -415,7 +415,7 @@ def test_apply_split_to_specified_cluster(splittable_result):
 
 
 def test_create_assignment_resolves_from_proposal():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.wizard.helpers import unit_vector
@@ -441,7 +441,7 @@ def test_create_assignment_resolves_from_proposal():
 
 
 def test_create_assignment_marks_new_when_proposal_identity_not_in_db():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.wizard.helpers import unit_vector
@@ -464,7 +464,7 @@ def test_create_assignment_marks_new_when_proposal_identity_not_in_db():
 
 
 def test_create_assignment_resolves_from_registry():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.wizard.helpers import unit_vector
@@ -485,7 +485,7 @@ def test_create_assignment_resolves_from_registry():
 
 
 def test_create_assignment_resolves_from_db():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.wizard.helpers import unit_vector
@@ -510,7 +510,7 @@ def test_create_assignment_resolves_from_db():
 def test_create_assignment_defaults_to_unknown_when_not_found():
     from django.core.exceptions import ObjectDoesNotExist
 
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.wizard.helpers import unit_vector
@@ -535,7 +535,7 @@ def test_create_assignment_defaults_to_unknown_when_not_found():
 def test_create_assignment_garbage_collects_previous_is_new():
     from django.core.exceptions import ObjectDoesNotExist
 
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
     from tests.unit.wizard.helpers import unit_vector
@@ -594,7 +594,7 @@ def test_create_new_identity_assignment_garbage_collects_previous():
 
 
 def test_persist_assignments_creates_new_identities():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
     from tests.unit.wizard.helpers import unit_vector
@@ -621,7 +621,7 @@ def test_persist_assignments_creates_new_identities():
 
 
 def test_persist_assignments_creates_images():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
     from tests.unit.wizard.helpers import unit_vector
@@ -646,7 +646,7 @@ def test_persist_assignments_creates_images():
 
 
 def test_persist_assignments_skips_deleted_identity():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
     from tests.unit.wizard.helpers import unit_vector
@@ -671,7 +671,7 @@ def test_persist_assignments_skips_deleted_identity():
 
 
 def test_persist_assignments_saves_centroid_on_identity():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
     from tests.unit.wizard.helpers import unit_vector
@@ -695,7 +695,7 @@ def test_persist_assignments_saves_centroid_on_identity():
 
 
 def test_persist_assignments_centroid_is_unit_vector():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
     from tests.unit.wizard.helpers import unit_vector
