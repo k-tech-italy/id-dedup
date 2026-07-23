@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from tests.unit.helpers import unit_vector
+from tests.unit.wizard.helpers import unit_vector
 
 
 def test_identity_update_centroid_sets_image_count():

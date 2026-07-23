@@ -18,7 +18,7 @@ from id_dedup.dedup.serializers import (
     serialize_result,
 )
 from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
-from tests.unit.helpers import unit_vector
+from tests.unit.wizard.helpers import unit_vector
 
 
 # ---------------------------------------------------------------------------
