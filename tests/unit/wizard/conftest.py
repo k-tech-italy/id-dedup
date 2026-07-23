@@ -19,7 +19,7 @@ def query_centroid():
 
 @pytest.fixture
 def unit_member():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from tests.unit.wizard.helpers import unit_vector
 
     return ClusterMember(
@@ -30,7 +30,7 @@ def unit_member():
 
 @pytest.fixture
 def two_member_group():
-    from id_dedup.dedup.pipeline import ClusterMember
+    from id_dedup.ml.pipeline import ClusterMember
     from tests.unit.wizard.helpers import unit_vector
 
     return [
@@ -41,7 +41,7 @@ def two_member_group():
 
 @pytest.fixture
 def cluster_result_with_groups():
-    from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
+    from id_dedup.ml.pipeline import ClusterMember, ClusterResult
     from tests.unit.wizard.helpers import unit_vector
 
     result = ClusterResult()

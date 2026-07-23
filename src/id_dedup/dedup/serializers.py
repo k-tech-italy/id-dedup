@@ -6,7 +6,7 @@ import uuid
 
 import numpy as np
 
-from .pipeline import ClusterMember, ClusterResult
+from id_dedup.ml.pipeline import ClusterMember, ClusterResult
 from .service.proposals import ClusterProposal, IdentityMatch
 
 

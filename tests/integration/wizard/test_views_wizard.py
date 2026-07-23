@@ -11,7 +11,7 @@ from django.urls import reverse
 
 from id_dedup.dedup import serializers
 from id_dedup.dedup.models import Identity
-from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
+from id_dedup.ml.pipeline import ClusterMember, ClusterResult
 from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
 
 

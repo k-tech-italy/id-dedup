@@ -6,7 +6,7 @@ import uuid
 import numpy as np
 import pytest
 
-from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
+from id_dedup.ml.pipeline import ClusterMember, ClusterResult
 from id_dedup.dedup.serializers import (
     deserialize_identity_match,
     deserialize_member,

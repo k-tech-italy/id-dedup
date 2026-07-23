@@ -9,12 +9,12 @@ from pgvector.django import CosineDistance
 
 from ..models import Identity, Image
 
-from ..pipeline import normalised_mean
+from id_dedup.ml.pipeline import normalised_mean
 
 if TYPE_CHECKING:
     import uuid
 
-    from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
+    from id_dedup.ml.pipeline import ClusterMember, ClusterResult
 
 
 @dataclass

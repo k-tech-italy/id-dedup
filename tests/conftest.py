@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from django.conf import settings
 
-from id_dedup.dedup.pipeline import ClusterMember, ClusterResult, process_images
+from id_dedup.ml.pipeline import ClusterMember, ClusterResult, process_images
 
 FACES_DIR = pathlib.Path(__file__).parent / "examples"
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}

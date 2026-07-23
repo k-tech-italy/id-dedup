@@ -5,7 +5,7 @@ import pathlib
 import numpy as np
 import pytest
 
-from id_dedup.dedup.pipeline import extract_embedding, process_images
+from id_dedup.ml.pipeline import extract_embedding, process_images
 
 # ---------------------------------------------------------------------------
 # extract_embedding
