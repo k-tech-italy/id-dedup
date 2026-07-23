@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from tests.unit.helpers import chainable_qs, mock_identity_row
+from tests.unit.wizard.helpers import chainable_qs, mock_identity_row
 
 
 # @transaction.atomic on persist_assignments opens a real DB savepoint even
@@ -418,7 +418,7 @@ def test_create_assignment_resolves_from_proposal():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
     from id_dedup.dedup.service.workflow import create_assignment
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     alice_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
     match = IdentityMatch(
@@ -444,7 +444,7 @@ def test_create_assignment_marks_new_when_proposal_identity_not_in_db():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
     from id_dedup.dedup.service.workflow import create_assignment
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     alice_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
     match = IdentityMatch(
@@ -467,7 +467,7 @@ def test_create_assignment_resolves_from_registry():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     proposal = ClusterProposal(
         members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
@@ -488,7 +488,7 @@ def test_create_assignment_resolves_from_db():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     proposal = ClusterProposal(
         members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
@@ -513,7 +513,7 @@ def test_create_assignment_defaults_to_unknown_when_not_found():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     proposal = ClusterProposal(
         members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
@@ -538,7 +538,7 @@ def test_create_assignment_garbage_collects_previous_is_new():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import create_assignment
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     proposal = ClusterProposal(
         members=[ClusterMember(file=pathlib.Path("p.jpg"), embedding=unit_vector(seed=0))],
@@ -597,7 +597,7 @@ def test_persist_assignments_creates_new_identities():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     identity_id = str(uuid.uuid4())
     assignments = {"0": {"identity_id": identity_id, "display_name": "New Person", "is_new": True}}
@@ -624,7 +624,7 @@ def test_persist_assignments_creates_images():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     identity_id = str(uuid.uuid4())
     assignments = {"0": {"identity_id": identity_id, "display_name": "Existing", "is_new": False}}
@@ -649,7 +649,7 @@ def test_persist_assignments_skips_deleted_identity():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     ghost_id = "00000000-0000-0000-0000-000000000009"
     assignments = {"0": {"identity_id": ghost_id, "display_name": "Ghost", "is_new": False}}
@@ -674,7 +674,7 @@ def test_persist_assignments_saves_centroid_on_identity():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     embedding = unit_vector(seed=42)
     identity_id = str(uuid.uuid4())
@@ -698,7 +698,7 @@ def test_persist_assignments_centroid_is_unit_vector():
     from id_dedup.dedup.pipeline import ClusterMember
     from id_dedup.dedup.service.proposals import ClusterProposal
     from id_dedup.dedup.service.workflow import persist_assignments
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     emb1, emb2 = unit_vector(seed=10), unit_vector(seed=11)
     identity_id = str(uuid.uuid4())

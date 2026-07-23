@@ -21,7 +21,7 @@ def logged_in_client(client):
 
 @pytest.fixture
 def query_centroid():
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     return unit_vector(seed=0)
 
@@ -29,7 +29,7 @@ def query_centroid():
 @pytest.fixture
 def unit_member():
     from id_dedup.dedup.pipeline import ClusterMember
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     return ClusterMember(
         file=pathlib.Path("examples/person1/photo_1.jpg"),
@@ -40,7 +40,7 @@ def unit_member():
 @pytest.fixture
 def two_member_group():
     from id_dedup.dedup.pipeline import ClusterMember
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     return [
         ClusterMember(file=pathlib.Path("examples/person1/photo_1.jpg"), embedding=unit_vector(seed=0)),
@@ -51,7 +51,7 @@ def two_member_group():
 @pytest.fixture
 def cluster_result_with_groups():
     from id_dedup.dedup.pipeline import ClusterMember, ClusterResult
-    from tests.unit.helpers import unit_vector
+    from tests.unit.wizard.helpers import unit_vector
 
     result = ClusterResult()
     result.clusters[0] = [
