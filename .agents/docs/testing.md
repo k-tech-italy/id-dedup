@@ -1,5 +1,7 @@
 # Testing guide
 
+> **Scope:** Test coverage currently covers the `id_dedup.dedup` app only. As `id_dedup.workflow` is built out, its tests will live in `tests/unit/` alongside the existing files (e.g. `test_workflow_models.py`, `test_workflow_views.py`). The same conventions and helpers apply.
+
 ## Running tests
 
 ```

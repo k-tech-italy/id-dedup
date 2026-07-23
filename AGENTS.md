@@ -1,6 +1,9 @@
 # id-dedup — Agent Guide
 
-4-step wizard web app that clusters uploaded face images and proposes matches against a database of known identities. All identity assignment is intentional and manual — the pipeline never auto-assigns.
+Two-app architecture:
+
+- **`id_dedup.dedup`** — the original 4-step session-based wizard. Kept intact for demos. All identity assignment is intentional and manual; the pipeline never auto-assigns.
+- **`id_dedup.workflow`** — new ticket-based async design (in progress). Single-image adjudication via Celery, persistent DB state. Models exist; views, services, and tasks are not yet implemented.
 
 ## Stack
 
@@ -14,6 +17,8 @@
 
 ## Source layout
 
+### dedup app (demo wizard)
+
 | Path | Responsibility |
 |---|---|
 | `src/id_dedup/dedup/pipeline.py` | Stage 1 — Django-free. `ClusterMember`, `ClusterResult`, embedding extraction, DBSCAN clustering, `normalised_mean()` |
@@ -22,13 +27,27 @@
 | `src/id_dedup/dedup/serializers.py` | Session serialization/deserialization (base64 for NumPy arrays) for pipeline and service data structures |
 | `src/id_dedup/dedup/models.py` | `Identity` (UUID, display_name, centroid VectorField, image_count) and `Image` (UUID, 512-d VectorField, nullable FK, source_image) |
 | `src/id_dedup/dedup/views.py` | 4-step wizard views, session helpers, HTMX partials |
-| `src/id_dedup/dedup/urls.py` | URL routes, `app_name="wizard"` |
+| `src/id_dedup/dedup/urls.py` | URL routes, `app_name="wizard"`, mounted at `/wizard/` |
+
+### workflow app (new design — in progress)
+
+| Path | Responsibility |
+|---|---|
+| `src/id_dedup/workflow/models.py` | `Identity` (UUID, centroid VectorField 512-d, HNSW index) and `Image` (UUID, nullable FK→Identity, embedding 512-d nullable, source_image, discarded bool). `embedding` is null at upload time; filled in by a future Celery task. |
+| `src/id_dedup/workflow/views.py` | Placeholder index view (`@login_required`); full views not yet implemented |
+| `src/id_dedup/workflow/urls.py` | `app_name="workflow"`, mounted at `/workflow/` |
+| `src/id_dedup/workflow/migrations/0001_initial.py` | Creates `workflow_identity` and `workflow_image` tables |
+
+### Shared
+
+| Path | Responsibility |
+|---|---|
 | `src/id_dedup/config/settings.py` | Django settings; `DATABASE_URL`, `SECRET_KEY`, `DEBUG` from env |
 | `tests/conftest.py` | Session-scoped pipeline fixture, `splittable_result`, per-image/person parametrised fixtures; real example images at `tests/examples/` |
 | `tests/unit/conftest.py` | Synthetic unit fixtures (`unit_member`, `two_member_group`, `cluster_result_with_groups`, etc.) and `logged_in_client` |
 | `tests/unit/helpers.py` | `chainable_qs`, `mock_identity_row`, `unit_vector` |
 
-## Architecture boundary rule
+## Architecture boundary rule (dedup app)
 
 > **`pipeline.py` has zero Django imports. `service/proposals.py` owns all ORM interaction for identity matching.**
 
@@ -38,7 +57,7 @@
 
 This boundary is intentional: it allows the ML pipeline to be tested without a Django/DB setup. Violating it breaks that separation.
 
-## DB writes: exactly one place
+## DB writes: exactly one place (dedup app)
 
 Only `workflow.persist_assignments()` in `service/workflow.py` creates `Identity` and `Image` records (within `@transaction.atomic`). It is called from the adjudication step views (`assign`, `new_identity`, `adjudication_next`) when the last proposal is processed — not from `complete()`. `complete()` is a read-only view that renders the persistence summary already stored in the session. `pipeline.py` and `service/proposals.py` are read-only with respect to the database.
 
@@ -62,7 +81,7 @@ Copy `.env.example` → `.env` and fill in `DATABASE_URL` and `SECRET_KEY` befor
 - No Django Forms, no DRF. Prefer function-based views; class-based views are acceptable when they meaningfully reduce complexity (e.g. dispatching multiple HTTP verbs).
 - Session keys are always prefixed `wizard_` (constant `SESSION_PREFIX = "wizard_"` in `views.py`).
 
-## Two-stage deduplication pipeline
+## Two-stage deduplication pipeline (dedup app)
 
 1. **Stage 1** (`process_images` in `pipeline.py`): extract 512-d ArcFace embeddings → L2-normalise → DBSCAN with cosine metric → `ClusterResult`. No DB access.
 2. **Stage 2** (`propose_matches` in `service/proposals.py`): compute centroid per cluster → pgvector `CosineDistance` query against `Identity.centroid` → `similarity_band` filter → `ClusterProposal` list. Read-only DB.
