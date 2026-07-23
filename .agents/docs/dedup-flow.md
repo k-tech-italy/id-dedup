@@ -1,4 +1,6 @@
-# Deduplication flow
+# Deduplication flow (id_dedup.dedup)
+
+> **Scope:** This document describes the `id_dedup.dedup` app — the original session-based 4-step wizard, kept for demos. The new ticket-based async design lives in `id_dedup.workflow` and is documented separately as it is built out.
 
 ## Overview
 
