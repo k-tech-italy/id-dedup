@@ -39,6 +39,7 @@ def pytest_configure(config):
                 "django.contrib.messages",
                 "django.contrib.staticfiles",
                 "id_dedup.dedup",
+                "id_dedup.workflow",
             ],
             MIDDLEWARE=[
                 "django.contrib.sessions.middleware.SessionMiddleware",
