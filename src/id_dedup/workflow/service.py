@@ -32,7 +32,7 @@ def create_tickets_from_result(
             if not member.file.exists():
                 continue
             ext = "".join(member.file.suffixes) or ".jpg"
-            with open(member.file, "rb") as f:
+            with member.file.open("rb") as f:
                 Image.objects.create(
                     batch=batch,
                     ticket=ticket,

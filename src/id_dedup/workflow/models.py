@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models import Avg, Count
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.utils import timezone
 from pgvector import django as djvector
 from pgvector.django import HnswIndex
 
@@ -119,7 +120,7 @@ class ClusterReviewTicketQuerySet(models.QuerySet):
 
 class ClusterReviewTicket(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="tickets")
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="cluster_tickets")
     cluster_label = models.IntegerField()  # DBSCAN label: -1 for singletons, 0+ for groups
     created_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
@@ -127,9 +128,7 @@ class ClusterReviewTicket(models.Model):
     objects = ClusterReviewTicketQuerySet.as_manager()
 
     def close(self, user=None) -> None:
-        # user is accepted for forward-compatibility: a closed_by FK will be
-        # added alongside the close-action view in a future branch.
-        from django.utils import timezone
+        # user is accepted for forward-compatibility: closed_by FK lands in feat/close-ticket-action.
         self.closed_at = timezone.now()
         self.save(update_fields=["closed_at"])
 

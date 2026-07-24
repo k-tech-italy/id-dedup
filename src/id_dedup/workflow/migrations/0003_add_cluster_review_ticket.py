@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 ('closed_at', models.DateTimeField(blank=True, null=True)),
                 ('batch', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='tickets',
+                    related_name='cluster_tickets',
                     to='workflow.batch',
                 )),
             ],

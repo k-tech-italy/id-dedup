@@ -10,6 +10,8 @@ from .models import ClusterReviewTicket
 @login_required
 def ticket_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "open")
+    if status not in {"open", "closed"}:
+        status = "open"
     if status == "closed":
         tickets = ClusterReviewTicket.objects.closed().select_related("batch").order_by("-created_at")
     else:
