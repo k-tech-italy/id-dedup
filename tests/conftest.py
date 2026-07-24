@@ -30,6 +30,7 @@ def pytest_configure(config):
                 },
             },
             SECRET_KEY="test-secret-key-not-for-production",
+            MEDIA_ROOT=pathlib.Path(__file__).parent / "media",
             STATIC_URL="/static/",
             INSTALLED_APPS=[
                 "django.contrib.admin",
