@@ -109,11 +109,42 @@ class Identity(models.Model):
         self.save(update_fields=["centroid", "updated_at"])
 
 
+class ClusterReviewTicketQuerySet(models.QuerySet):
+    def open(self):
+        return self.filter(closed_at__isnull=True)
+
+    def closed(self):
+        return self.filter(closed_at__isnull=False)
+
+
+class ClusterReviewTicket(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="tickets")
+    cluster_label = models.IntegerField()  # DBSCAN label: -1 for singletons, 0+ for groups
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    objects = ClusterReviewTicketQuerySet.as_manager()
+
+    def close(self, user=None) -> None:
+        # user is accepted for forward-compatibility: a closed_by FK will be
+        # added alongside the close-action view in a future branch.
+        from django.utils import timezone
+        self.closed_at = timezone.now()
+        self.save(update_fields=["closed_at"])
+
+    @override
+    def __str__(self) -> str:
+        label = "singletons" if self.cluster_label == -1 else f"cluster {self.cluster_label}"
+        return f"Ticket {self.id} ({label})"
+
+
 class Image(models.Model):
     """An uploaded image that may be assigned to an identity and stores a 512-d embedding."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     batch = models.ForeignKey(Batch, null=True, on_delete=models.SET_NULL, related_name="images")
+    ticket = models.ForeignKey(ClusterReviewTicket, null=True, on_delete=models.SET_NULL, related_name="images")
     identity = models.ForeignKey(
         Identity,
         null=True,
