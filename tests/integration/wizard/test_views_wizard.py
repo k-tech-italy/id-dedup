@@ -187,9 +187,12 @@ class TestWizardUpload:
         assert b"Unsupported" in resp.content
 
     @pytest.mark.django_db(transaction=True)
-    def test_post_with_valid_jpeg_redirects_to_review(self, logged_in_client):
+    def test_post_with_valid_jpeg_redirects_to_review(self, logged_in_client, tmp_path):
         jpeg = SimpleUploadedFile("photo.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100, content_type="image/jpeg")
-        with mock.patch("id_dedup.dedup.service.workflow.process_uploads", return_value=ClusterResult()):
+        with (
+            mock.patch("id_dedup.dedup.views.tempfile.mkdtemp", return_value=str(tmp_path)),
+            mock.patch("id_dedup.dedup.service.workflow.process_uploads", return_value=ClusterResult()),
+        ):
             resp = logged_in_client.post(reverse("wizard:upload"), {"images": [jpeg]})
         assert resp.status_code == 302
         assert resp.url == reverse("wizard:review")

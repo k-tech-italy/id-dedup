@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import atexit
 import os
 import pathlib
+import shutil
 from urllib.parse import urlparse
 
 import django
@@ -13,6 +15,9 @@ from id_dedup.ml.pipeline import ClusterMember, ClusterResult, process_images
 
 FACES_DIR = pathlib.Path(__file__).parent / "examples"
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+
+_test_media_root = pathlib.Path(__file__).parent / "media"
+atexit.register(shutil.rmtree, str(_test_media_root), ignore_errors=True)
 
 
 def pytest_configure(config):
@@ -30,7 +35,7 @@ def pytest_configure(config):
                 },
             },
             SECRET_KEY="test-secret-key-not-for-production",
-            MEDIA_ROOT=pathlib.Path(__file__).parent / "media",
+            MEDIA_ROOT=_test_media_root,
             STATIC_URL="/static/",
             INSTALLED_APPS=[
                 "django.contrib.admin",
