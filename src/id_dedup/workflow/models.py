@@ -3,6 +3,7 @@ from typing import Any, Self, override
 
 import numpy as np
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import Avg, Count
 from django.db.models.signals import post_delete
@@ -111,31 +112,44 @@ class Identity(models.Model):
 
 
 class ClusterReviewTicketQuerySet(models.QuerySet):
-    def open(self):
+    """Custom queryset providing convenience filters for ticket lifecycle states."""
+
+    def open(self) -> Self:
+        """Return the open (unclosed) tickets in this queryset."""
         return self.filter(closed_at__isnull=True)
 
-    def closed(self):
+    def closed(self) -> Self:
+        """Return the closed tickets in this queryset."""
         return self.filter(closed_at__isnull=False)
 
 
 class ClusterReviewTicket(models.Model):
+    """Workflow ticket representing a single cluster awaiting user review and adjudication."""
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="cluster_tickets")
-    cluster_label = models.IntegerField()  # DBSCAN label: -1 for singletons, 0+ for groups
+    cluster_label = models.IntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
 
     objects = ClusterReviewTicketQuerySet.as_manager()
 
-    def close(self, user=None) -> None:
-        # user is accepted for forward-compatibility: closed_by FK lands in feat/close-ticket-action.
+    @override
+    def __str__(self) -> str:
+        return f"Ticket {self.id} (cluster {self.cluster_label})"
+
+    def close(self, user: User | None = None) -> None:
+        """Mark the ticket as closed at the current timestamp."""
+        # TODO: track the user closing this ticket
+        if self.is_closed:
+            return
         self.closed_at = timezone.now()
         self.save(update_fields=["closed_at"])
 
-    @override
-    def __str__(self) -> str:
-        label = "singletons" if self.cluster_label == -1 else f"cluster {self.cluster_label}"
-        return f"Ticket {self.id} ({label})"
+    @property
+    def is_closed(self) -> bool:
+        """Return whether the ticket has been closed."""
+        return self.closed_at is not None
 
 
 class Image(models.Model):
