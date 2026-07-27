@@ -25,6 +25,7 @@ def create_tickets_from_result(
     is still created.
     """
     tickets: list[ClusterReviewTicket] = []
+    all_images: list[Image] = []
 
     for label in result.groups:
         ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=label)
@@ -32,13 +33,14 @@ def create_tickets_from_result(
             if not member.file.exists():
                 continue
             ext = "".join(member.file.suffixes)
+            img = Image(batch=batch, ticket=ticket, embedding=member.embedding)
             with member.file.open("rb") as f:
-                Image.objects.create(
-                    batch=batch,
-                    ticket=ticket,
-                    embedding=member.embedding,
-                    source_image=File(f, name=f"{uuid.uuid4()}{ext}"),
-                )
+                # save=False writes the file to storage and sets img.source_image.name
+                # without a DB INSERT. Image.save() — including any future override — is
+                # not called; bulk_create below handles all inserts in one query.
+                img.source_image.save(f"{uuid.uuid4()}{ext}", File(f), save=False)
+            all_images.append(img)
         tickets.append(ticket)
 
+    Image.objects.bulk_create(all_images)
     return tickets

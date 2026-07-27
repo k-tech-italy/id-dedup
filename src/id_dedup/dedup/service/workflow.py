@@ -201,6 +201,9 @@ def persist_assignments(
     assigned = len(assignments)
     new_ids = 0
 
+    all_images: list[Image] = []
+    identities_to_update: list[Identity] = []
+
     for adj_index_str, assignment in assignments.items():
         adj_index = int(adj_index_str)
         if assignment.get("is_new"):
@@ -223,14 +226,19 @@ def persist_assignments(
             if not member.file.exists():
                 continue
             ext = "".join(member.file.suffixes) or ".jpg"
-            dest_name = f"{uuid.uuid4()}{ext}"
+            img = Image(identity=identity, embedding=member.embedding)
             with open(member.file, "rb") as f:
-                Image.objects.create(
-                    identity=identity,
-                    embedding=member.embedding,
-                    source_image=File(f, name=dest_name),
-                )
+                # save=False writes the file to storage and sets img.source_image.name
+                # without a DB INSERT. Image.save() — including any future override — is
+                # not called; bulk_create below handles all inserts in one query.
+                img.source_image.save(f"{uuid.uuid4()}{ext}", File(f), save=False)
+            all_images.append(img)
 
+        identities_to_update.append(identity)
+
+    # bulk_create must precede update_centroid: the centroid aggregates over committed Image rows.
+    Image.objects.bulk_create(all_images)
+    for identity in identities_to_update:
         identity.update_centroid()
 
     if tmpdir_name:

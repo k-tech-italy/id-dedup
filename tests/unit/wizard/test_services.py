@@ -639,8 +639,8 @@ def test_persist_assignments_creates_images():
         with patch.object(pathlib.Path, "exists", return_value=True):
             summary = persist_assignments(assignments, [proposal], tmpdir_name=None)
 
-    assert MockImage.objects.create.called
-    call_kwargs = MockImage.objects.create.call_args[1]
+    assert MockImage.objects.bulk_create.called
+    call_kwargs = MockImage.call_args.kwargs
     assert call_kwargs["identity"] is MockIdentity
     assert call_kwargs["embedding"] is member.embedding
 
