@@ -148,21 +148,3 @@ class TestCreateTicketsFromResult:
         assert len(tickets) == 1
         assert ClusterReviewTicket.objects.filter(batch=batch).count() == 1
         assert Image.objects.filter(batch=batch).count() == 0
-
-    def test_groups_returned_in_ascending_label_order(self, tmp_path):
-        from id_dedup.workflow.models import Batch
-        from id_dedup.workflow.service import create_tickets_from_result
-
-        result = ClusterResult()
-        result.clusters[1] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g1a.jpg"), embedding=_unit_vector(20)),
-        ]
-        result.clusters[0] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g0a.jpg"), embedding=_unit_vector(10)),
-        ]
-
-        batch = Batch.objects.create()
-        tickets = create_tickets_from_result(result, batch)
-
-        assert tickets[0].cluster_label == 0
-        assert tickets[1].cluster_label == 1

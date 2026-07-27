@@ -19,19 +19,19 @@ def create_tickets_from_result(
 ) -> list[ClusterReviewTicket]:
     """Create one ClusterReviewTicket per group cluster and persist images to the DB.
 
-    Only DBSCAN groups (label >= 0) produce tickets, processed in ascending label
-    order. Singletons (label -1) bypass the review step entirely and are handled
+    Only DBSCAN groups (label >= 0) produce tickets. Singletons (label -1) bypass
+    the review step entirely and are handled
     downstream. Images whose temp file no longer exists are skipped; their ticket
     is still created.
     """
     tickets: list[ClusterReviewTicket] = []
 
-    for label in sorted(result.groups):
+    for label in result.groups:
         ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=label)
         for member in result.groups[label]:
             if not member.file.exists():
                 continue
-            ext = "".join(member.file.suffixes) or ".jpg"
+            ext = "".join(member.file.suffixes)
             with member.file.open("rb") as f:
                 Image.objects.create(
                     batch=batch,
