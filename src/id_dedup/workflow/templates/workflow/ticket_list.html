@@ -22,13 +22,16 @@
   <ul class="divide-y divide-gray-800">
     {% for ticket in tickets %}
     <li class="py-4 flex items-center justify-between">
-      <div>
-        <p class="text-sm font-medium text-gray-200">{{ ticket }}</p>
-        <p class="text-xs text-gray-500 mt-0.5">Batch created {{ ticket.batch.created_at|date:"Y-m-d H:i" }}</p>
-      </div>
-      <span class="text-xs px-2 py-0.5 rounded-full {% if ticket.closed_at %}bg-gray-800 text-gray-500{% else %}bg-emerald-600/10 text-emerald-400{% endif %}">
-        {% if ticket.closed_at %}Closed{% else %}Open{% endif %}
-      </span>
+      <a href="{% url 'workflow:ticket_detail' pk=ticket.pk %}"
+         class="group flex-1 flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">{{ ticket }}</p>
+          <p class="text-xs text-gray-500 mt-0.5">Batch created {{ ticket.batch.created_at|date:"Y-m-d H:i" }}</p>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded-full {% if ticket.closed_at %}bg-gray-800 text-gray-500{% else %}bg-emerald-600/10 text-emerald-400{% endif %}">
+          {% if ticket.closed_at %}Closed{% else %}Open{% endif %}
+        </span>
+      </a>
     </li>
     {% endfor %}
   </ul>

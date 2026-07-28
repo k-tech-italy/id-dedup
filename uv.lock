@@ -259,6 +259,7 @@ source = { editable = "." }
 dependencies = [
     { name = "celery", extra = ["redis"] },
     { name = "django" },
+    { name = "django-stubs-ext" },
     { name = "insightface" },
     { name = "numpy" },
     { name = "opencv-python" },
@@ -272,7 +273,6 @@ dependencies = [
 dev = [
     { name = "bumpversion" },
     { name = "django-stubs" },
-    { name = "django-stubs-ext" },
     { name = "pytest" },
     { name = "pytest-django" },
 ]
@@ -281,6 +281,7 @@ dev = [
 requires-dist = [
     { name = "celery", extras = ["redis"], specifier = ">=5.4" },
     { name = "django", specifier = "~=5.2" },
+    { name = "django-stubs-ext", specifier = ">=5.2.9" },
     { name = "insightface", specifier = ">=1.0.1" },
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "opencv-python", specifier = ">=4.13.0.92" },
@@ -294,7 +295,6 @@ requires-dist = [
 dev = [
     { name = "bumpversion", specifier = ">=0.6.0" },
     { name = "django-stubs", specifier = "<6" },
-    { name = "django-stubs-ext", specifier = "<6" },
     { name = "pytest", specifier = ">=9.1.0" },
     { name = "pytest-django", specifier = ">=4.12.0" },
 ]
