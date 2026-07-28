@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import uuid
-from typing import Any, Self, override
+from typing import TYPE_CHECKING, Any, Self, override
 
 import numpy as np
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import Avg, Count
 from django.db.models.signals import post_delete
@@ -11,6 +12,9 @@ from django.dispatch import receiver
 from django.utils import timezone
 from pgvector import django as djvector
 from pgvector.django import HnswIndex
+
+if TYPE_CHECKING:
+    from django.contrib.auth.models import User
 
 
 class Batch(models.Model):
@@ -55,7 +59,6 @@ class Conversation(models.Model):
     """Tracks the lifecycle of an image batch."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="conversations")
     parent = models.ForeignKey("self", null=True, on_delete=models.SET_NULL, related_name="children")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -123,28 +126,46 @@ class ClusterReviewTicketQuerySet(models.QuerySet):
         return self.filter(closed_at__isnull=False)
 
 
+ClusterReviewTicketManager = models.Manager.from_queryset(ClusterReviewTicketQuerySet)
+
+
 class ClusterReviewTicket(models.Model):
     """Workflow ticket representing a single cluster awaiting user review and adjudication."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="cluster_tickets")
     cluster_label = models.IntegerField()
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="reviewed_tickets",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
 
-    objects = ClusterReviewTicketQuerySet.as_manager()
+    objects = ClusterReviewTicketManager()
+
+    if TYPE_CHECKING:
+        images: models.Manager[Image]
 
     @override
     def __str__(self) -> str:
         return f"Ticket {self.id} (cluster {self.cluster_label})"
 
     def close(self, user: User | None = None) -> None:
-        """Mark the ticket as closed at the current timestamp."""
-        # TODO: track the user closing this ticket
+        """
+        Mark the ticket as closed at the current timestamp.
+
+        Persists the closing user via *reviewed_by* to preserve
+        accountability even after the ticket is closed.
+        """
         if self.is_closed:
             return
+        if user is not None:
+            self.reviewed_by = user
         self.closed_at = timezone.now()
-        self.save(update_fields=["closed_at"])
+        self.save()
 
     @property
     def is_closed(self) -> bool:
@@ -152,12 +173,32 @@ class ClusterReviewTicket(models.Model):
         return self.closed_at is not None
 
 
+class ImageQuerySet(models.QuerySet["Image"]):
+    """Custom queryset providing convenience filters for images."""
+
+    def discarded(self) -> Self:
+        """Return the images discarded by the user on cluster review."""
+        return self.filter(discarded=True)
+
+    def assignable(self) -> Self:
+        """
+        Return images that can potentially be assigned to an identity.
+
+        Images returned by this method may either have just been
+        uploaded or have passed cluster review.
+        """
+        return self.filter(discarded=False)
+
+
+ImageManager = models.Manager.from_queryset(ImageQuerySet)
+
+
 class Image(models.Model):
     """An uploaded image that may be assigned to an identity and stores a 512-d embedding."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     batch = models.ForeignKey(Batch, null=True, on_delete=models.SET_NULL, related_name="images")
-    ticket = models.ForeignKey(ClusterReviewTicket, null=True, on_delete=models.SET_NULL, related_name="images")
+    cluster_ticket = models.ForeignKey(ClusterReviewTicket, null=True, on_delete=models.SET_NULL, related_name="images")
     identity = models.ForeignKey(
         Identity,
         null=True,
@@ -169,6 +210,8 @@ class Image(models.Model):
     discarded = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ImageManager()
 
     class Meta:
         """HNSW index on embedding for fast cosine-similarity lookups."""

@@ -1,19 +1,47 @@
+from typing import cast
+
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
-from django.views.decorators.http import require_safe
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST, require_safe
 
-from .models import ClusterReviewTicket
+from id_dedup.typing.request import AuthenticatedHttpRequest
+from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet
+from id_dedup.workflow.service import submit_ticket_review
 
 
 @require_safe
 @login_required
 def ticket_list(request: HttpRequest) -> HttpResponse:
+    """Render the ticket list page filtered by open/closed status."""
     status = request.GET.get("status", "open")
     if status not in {"open", "closed"}:
         status = "open"
-    if status == "closed":
-        tickets = ClusterReviewTicket.objects.closed().select_related("batch").order_by("-created_at")
-    else:
-        tickets = ClusterReviewTicket.objects.open().select_related("batch").order_by("-created_at")
+
+    tickets = cast(
+        "ClusterReviewTicketQuerySet",
+        ClusterReviewTicket.objects.select_related("batch").order_by("-created_at"),
+    )
+    tickets = tickets.closed() if status == "closed" else tickets.open()
     return render(request, "workflow/ticket_list.html", {"tickets": tickets, "status": status})
+
+
+@require_safe
+@login_required
+def ticket_detail(request: HttpRequest, pk: str) -> HttpResponse:
+    """Render the detail page for a single cluster review ticket."""
+    ticket = get_object_or_404(
+        ClusterReviewTicket.objects.select_related("batch").prefetch_related("images"),
+        pk=pk,
+    )
+    return render(request, "workflow/ticket_detail.html", {"ticket": ticket})
+
+
+@require_POST
+@login_required
+def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
+    """Persist image discards, close the ticket, and dispatch the next-stage task."""
+    ticket = get_object_or_404(cast("ClusterReviewTicketQuerySet", ClusterReviewTicket.objects).open(), pk=pk)
+    discarded_ids = request.POST.getlist("discard")
+    submit_ticket_review(ticket, user=request.user, discarded_ids=discarded_ids)
+    return redirect("workflow:ticket_list")

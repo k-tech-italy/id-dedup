@@ -104,7 +104,7 @@ class TestCreateTicketsFromResult:
         batch = Batch.objects.create()
         tickets = create_tickets_from_result(result, batch)
 
-        assert Image.objects.filter(ticket=tickets[0]).count() == 2
+        assert Image.objects.filter(cluster_ticket=tickets[0]).count() == 2
 
     def test_empty_result_yields_no_tickets(self):
         from id_dedup.workflow.models import Batch, ClusterReviewTicket
