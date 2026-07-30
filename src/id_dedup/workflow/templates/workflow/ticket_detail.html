@@ -25,12 +25,13 @@
     {% csrf_token %}
     <div class="flex flex-wrap gap-4 mb-8">
       {% for image in ticket.images.all %}
-      <label class="flex flex-col items-center gap-1.5 cursor-pointer group">
+      <label class="flex flex-col items-center gap-1.5 cursor-pointer group{% if ticket.closed_at %} opacity-50 cursor-default pointer-events-none{% endif %}">
         <input type="checkbox"
                name="keep"
                value="{{ image.id }}"
                class="sr-only"
-               x-model="keptIds" />
+               x-model="keptIds"
+               {% if ticket.closed_at %}disabled{% endif %} />
         <div class="bg-gray-800 rounded-lg overflow-hidden w-28 h-28 transition-all duration-150
                     group-hover:ring-1 group-hover:ring-gray-600"
              :style="keptIds.includes('{{ image.id }}')
@@ -55,12 +56,21 @@
   {# footer: submit bar #}
   <div class="flex items-center justify-between pt-4 border-t border-gray-800">
     <p class="text-sm text-gray-400">
-      <span x-text="keptIds.length"></span> of {{ ticket.images.all|length }} image{{ ticket.images.all|length|pluralize }} marked for keep
+      {% if ticket.closed_at %}
+        Reviewed{% if ticket.reviewed_by %} by {{ ticket.reviewed_by.get_full_name|default:ticket.reviewed_by.username }}{% endif %}
+        on {{ ticket.closed_at|date:"Y-m-d H:i" }}
+      {% else %}
+        <span x-text="keptIds.length"></span> of {{ ticket.images.all|length }} image{{ ticket.images.all|length|pluralize }} marked for keep
+      {% endif %}
     </p>
-    <button type="submit" form="reviewForm"
-            class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-      Submit Review
-    </button>
+    {% if not ticket.closed_at %}
+      <button type="submit" form="reviewForm"
+              class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        Submit Review
+      </button>
+    {% else %}
+      <span class="text-xs px-3 py-1.5 rounded-full bg-red-950 border border-red-700 text-red-400 font-medium">Closed</span>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
