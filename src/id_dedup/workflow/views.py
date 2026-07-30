@@ -1,5 +1,6 @@
 from typing import cast
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -41,7 +42,15 @@ def ticket_detail(request: HttpRequest, pk: str) -> HttpResponse:
 @login_required
 def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
     """Persist image discards, close the ticket, and dispatch the next-stage task."""
-    ticket = get_object_or_404(cast("ClusterReviewTicketQuerySet", ClusterReviewTicket.objects).open(), pk=pk)
+    ticket = get_object_or_404(ClusterReviewTicket.objects, pk=pk)
+    if ticket.is_closed:
+        reviewed_by = ticket.reviewed_by
+        msg = f"Cluster {ticket.cluster_label} was already reviewed"
+        if reviewed_by:
+            msg += f" by {reviewed_by.username}"
+        msg += "."
+        messages.info(request, msg)
+        return redirect("workflow:ticket_list")
     discarded_ids = request.POST.getlist("discard")
     submit_ticket_review(ticket, user=request.user, discarded_ids=discarded_ids)
     return redirect("workflow:ticket_list")

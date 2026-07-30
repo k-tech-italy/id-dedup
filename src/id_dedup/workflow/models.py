@@ -159,13 +159,22 @@ class ClusterReviewTicket(models.Model):
 
         Persists the closing user via *reviewed_by* to preserve
         accountability even after the ticket is closed.
+
+        Uses an atomic conditional ``UPDATE`` so concurrent callers
+        never overwrite unrelated fields — the DB-level ``WHERE
+        closed_at IS NULL`` guard makes the check-and-write atomic.
         """
         if self.is_closed:
             return
-        if user is not None:
-            self.reviewed_by = user
-        self.closed_at = timezone.now()
-        self.save()
+
+        # NOTE: this mitigates a race condition where two users are
+        # trying to close the same ticket at the same time.
+        ClusterReviewTicket.objects.filter(pk=self.pk, closed_at__isnull=True).update(
+            closed_at=timezone.now(),
+            reviewed_by=user if user is not None else self.reviewed_by,
+        )
+
+        self.refresh_from_db()
 
     @property
     def is_closed(self) -> bool:

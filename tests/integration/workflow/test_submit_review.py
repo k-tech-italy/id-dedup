@@ -68,15 +68,16 @@ class TestSubmitReview:
         ticket.refresh_from_db()
         assert ticket.reviewed_by == User.objects.get(username="testuser")
 
-    def test_submit_closed_ticket_returns_404(self, logged_in_client, tmp_path):
+    def test_submit_closed_ticket_shows_message(self, logged_in_client, tmp_path):
         batch = Batch.objects.create()
         ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
         _make_image(ticket, tmp_path, "a.jpg")
 
         logged_in_client.post(_url(pk=ticket.pk))
-        response = logged_in_client.post(_url(pk=ticket.pk))
+        response = logged_in_client.post(_url(pk=ticket.pk), follow=True)
 
-        assert response.status_code == 404
+        assert response.status_code == 200
+        assert "was already reviewed" in response.content.decode()
 
     def test_submit_creates_conversation(self, logged_in_client, tmp_path):
         batch = Batch.objects.create()
@@ -117,11 +118,3 @@ class TestSubmitReview:
         ticket.refresh_from_db()
         assert ticket.is_closed
         assert all(img.discarded for img in Image.objects.filter(cluster_ticket=ticket))
-
-    def test_submit_404_for_closed_ticket(self, logged_in_client, tmp_path):
-        batch = Batch.objects.create()
-        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
-        ticket.close()
-
-        response = logged_in_client.post(_url(pk=ticket.pk))
-        assert response.status_code == 404
