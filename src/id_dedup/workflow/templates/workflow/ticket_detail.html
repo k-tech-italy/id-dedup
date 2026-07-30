@@ -33,7 +33,7 @@
                x-model="keptIds"
                {% if ticket.closed_at %}disabled{% endif %} />
         <div class="bg-gray-800 rounded-lg overflow-hidden w-28 h-28 transition-all duration-150
-                    group-hover:ring-1 group-hover:ring-gray-600"
+                    group-hover:ring-1 group-hover:ring-gray-600{% if ticket.closed_at and image.id|stringformat:'s' not in kept_ids %} opacity-30{% endif %}"
              :style="keptIds.includes('{{ image.id }}')
                        ? 'box-shadow:0 0 0 2px #10b981'
                        : ''">
@@ -42,7 +42,7 @@
                class="w-full h-full object-cover"
                loading="lazy" />
         </div>
-        <span class="text-[11px] text-gray-500 truncate max-w-28 text-center"
+        <span class="text-[11px] text-gray-500 truncate max-w-28 text-center{% if ticket.closed_at and image.id|stringformat:'s' not in kept_ids %} opacity-30{% endif %}"
               :class="{ 'text-gray-300': keptIds.includes('{{ image.id }}') }">
           {{ image.source_image.name|truncatechars:16 }}
         </span>
