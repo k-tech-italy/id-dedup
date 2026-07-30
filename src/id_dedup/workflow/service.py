@@ -49,6 +49,23 @@ def create_tickets_from_result(
     return tickets
 
 
+def get_kept_image_ids(ticket: ClusterReviewTicket) -> set[str]:
+    """Return kept image UUIDs for a closed ticket. Returns empty set if open."""
+    if not ticket.is_closed:
+        return set()
+    conversation = (
+        Conversation.objects.filter(
+            trigger=Trigger.CLUSTER_REVIEW,
+            summary__ticket_id=str(ticket.pk),
+        )
+        .only("summary")
+        .first()
+    )
+    if conversation is None:
+        return set()
+    return set(conversation.summary.get("kept_image_ids", []))
+
+
 @transaction.atomic
 def submit_ticket_review(
     ticket: ClusterReviewTicket,

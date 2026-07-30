@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST, require_safe
 
 from id_dedup.typing.request import AuthenticatedHttpRequest
 from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet
-from id_dedup.workflow.service import submit_ticket_review
+from id_dedup.workflow.service import get_kept_image_ids, submit_ticket_review
 
 
 @require_safe
@@ -35,7 +35,8 @@ def ticket_detail(request: HttpRequest, pk: str) -> HttpResponse:
         ClusterReviewTicket.objects.select_related("batch").prefetch_related("images"),
         pk=pk,
     )
-    return render(request, "workflow/ticket_detail.html", {"ticket": ticket})
+    kept_ids = get_kept_image_ids(ticket)
+    return render(request, "workflow/ticket_detail.html", {"ticket": ticket, "kept_ids": kept_ids})
 
 
 @require_POST
