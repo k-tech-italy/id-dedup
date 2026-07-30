@@ -182,26 +182,6 @@ class ClusterReviewTicket(models.Model):
         return self.closed_at is not None
 
 
-class ImageQuerySet(models.QuerySet["Image"]):
-    """Custom queryset providing convenience filters for images."""
-
-    def discarded(self) -> Self:
-        """Return the images discarded by the user on cluster review."""
-        return self.filter(discarded=True)
-
-    def assignable(self) -> Self:
-        """
-        Return images that can potentially be assigned to an identity.
-
-        Images returned by this method may either have just been
-        uploaded or have passed cluster review.
-        """
-        return self.filter(discarded=False)
-
-
-ImageManager = models.Manager.from_queryset(ImageQuerySet)
-
-
 class Image(models.Model):
     """An uploaded image that may be assigned to an identity and stores a 512-d embedding."""
 
@@ -216,11 +196,8 @@ class Image(models.Model):
     )
     embedding = djvector.VectorField(dimensions=512, null=True)
     source_image = models.FileField(upload_to="images")
-    discarded = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    objects = ImageManager()
 
     class Meta:
         """HNSW index on embedding for fast cosine-similarity lookups."""

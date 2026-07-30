@@ -53,25 +53,22 @@ def create_tickets_from_result(
 def submit_ticket_review(
     ticket: ClusterReviewTicket,
     user: User | None = None,
-    discarded_ids: list[str] | None = None,
+    kept_ids: list[str] | None = None,
 ) -> None:
     """
-    Finalise a cluster review by persisting discards and closing the ticket.
+    Finalise a cluster review by closing the ticket and advancing kept images.
 
-    Marks the given image IDs as discarded, closes the ticket (recording the
-    reviewing user), creates a *CLUSTER_REVIEW* conversation to audit the
-    outcome, and dispatches a *process_reviewed_set* task for the survivors.
+    Closes the ticket (recording the reviewing user), creates a *CLUSTER_REVIEW*
+    conversation to audit the outcome, and dispatches a *process_reviewed_set*
+    task with the list of kept image IDs.
     """
     if ticket.is_closed:
         raise ValueError(f"Ticket {ticket.id} is already closed")
 
-    if discarded_ids:
-        Image.objects.filter(cluster_ticket=ticket, id__in=discarded_ids).update(discarded=True)
-
     ticket.close(user=user)
 
-    confirmed = list(ticket.images.filter(discarded=False))
-    discarded = list(ticket.images.filter(discarded=True))
+    kept_ids = kept_ids or []
+    total = ticket.images.count()
 
     Conversation.objects.create(
         trigger=Trigger.CLUSTER_REVIEW,
@@ -79,12 +76,12 @@ def submit_ticket_review(
         summary={
             "ticket_id": str(ticket.id),
             "cluster_label": ticket.cluster_label,
-            "confirmed_count": len(confirmed),
-            "discarded_count": len(discarded),
-            "discarded_image_ids": [str(i.id) for i in discarded],
+            "kept_count": len(kept_ids),
+            "discarded_count": total - len(kept_ids),
+            "kept_image_ids": [str(i) for i in kept_ids],
             "reviewed_by": user.username if user else None,
         },
         ended_at=timezone.now(),
     )
 
-    process_reviewed_set.delay(ticket_id=str(ticket.id), user_id=user.pk if user else None)
+    process_reviewed_set.delay(ticket_id=str(ticket.id), kept_ids=kept_ids, user_id=user.pk if user else None)

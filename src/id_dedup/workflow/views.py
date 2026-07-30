@@ -41,7 +41,7 @@ def ticket_detail(request: HttpRequest, pk: str) -> HttpResponse:
 @require_POST
 @login_required
 def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
-    """Persist image discards, close the ticket, and dispatch the next-stage task."""
+    """Close the ticket and dispatch the next-stage task for kept images."""
     ticket = get_object_or_404(ClusterReviewTicket.objects, pk=pk)
     if ticket.is_closed:
         reviewed_by = ticket.reviewed_by
@@ -51,6 +51,6 @@ def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
         msg += "."
         messages.info(request, msg)
         return redirect("workflow:ticket_list")
-    discarded_ids = request.POST.getlist("discard")
-    submit_ticket_review(ticket, user=request.user, discarded_ids=discarded_ids)
+    kept_ids = request.POST.getlist("keep")
+    submit_ticket_review(ticket, user=request.user, kept_ids=kept_ids)
     return redirect("workflow:ticket_list")
