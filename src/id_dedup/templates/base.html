@@ -33,6 +33,17 @@
     </div>
   </header>
 
+  <!-- ====== MESSAGES ====== -->
+  {% if messages %}
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+    {% for message in messages %}
+    <div class="rounded-lg px-4 py-3 text-sm {% if 'error' in message.tags %}bg-red-600/20 text-red-400{% else %}bg-sky-600/20 text-sky-400{% endif %}">
+      {{ message }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <!-- ====== CONTENT ====== -->
   {% block content %}{% endblock %}
 

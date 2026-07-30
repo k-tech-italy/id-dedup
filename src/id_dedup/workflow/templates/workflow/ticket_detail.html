@@ -13,7 +13,7 @@
       <h1 class="text-xl font-semibold">Review Cluster {{ ticket.cluster_label }}</h1>
       <p class="text-sm text-gray-400 mt-0.5">
         Batch created {{ ticket.batch.created_at|date:"Y-m-d H:i" }} ·
-        <span class="text-gray-500">{{ ticket.images.count }} image{{ ticket.images.count|pluralize }}</span>
+        <span class="text-gray-500">{{ ticket.images.all|length }} image{{ ticket.images.all|length|pluralize }}</span>
       </p>
     </div>
     <a href="{% url 'workflow:ticket_list' %}"
@@ -53,7 +53,7 @@
   {# footer: submit bar #}
   <div class="flex items-center justify-between pt-4 border-t border-gray-800">
     <p class="text-sm text-gray-400">
-      <span x-text="discardedIds.length"></span> of {{ ticket.images.count }} image{{ ticket.images.count|pluralize }} marked for discard
+      <span x-text="discardedIds.length"></span> of {{ ticket.images.all|length }} image{{ ticket.images.all|length|pluralize }} marked for discard
     </p>
     <button type="submit" form="reviewForm"
             class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg px-5 py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
