@@ -29,12 +29,13 @@
         <input type="checkbox"
                name="keep"
                value="{{ image.id }}"
-               class="sr-only peer"
+               class="sr-only"
                x-model="keptIds" />
         <div class="bg-gray-800 rounded-lg overflow-hidden w-28 h-28 transition-all duration-150
-                    opacity-40
-                    peer-checked:opacity-100 peer-checked:ring-2 peer-checked:ring-emerald-500
-                    group-hover:ring-1 group-hover:ring-gray-600 peer-checked:group-hover:ring-emerald-500">
+                    group-hover:ring-1 group-hover:ring-gray-600"
+             :style="keptIds.includes('{{ image.id }}')
+                       ? 'box-shadow:0 0 0 2px #10b981'
+                       : ''">
           <img src="{{ image.source_image.url }}"
                alt="{{ image.source_image.name }}"
                class="w-full h-full object-cover"
