@@ -1,6 +1,6 @@
 # Testing guide
 
-> **Scope:** Test coverage currently covers the `id_dedup.dedup` app only. As `id_dedup.workflow` is built out, its tests will live in `tests/unit/` alongside the existing files (e.g. `test_workflow_models.py`, `test_workflow_views.py`). The same conventions and helpers apply.
+> **Scope:** Tests cover both apps. `tests/unit/wizard/` holds DB-free unit tests for the dedup pipeline/services/serializers. `tests/integration/` holds DB-backed tests: wizard view tests under `wizard/` and workflow model/service/view tests under `workflow/`.
 
 ## Running tests
 
@@ -8,7 +8,7 @@
 pytest
 ```
 
-`DATABASE_URL` must be set in the environment. `tests/conftest.py` calls `django.setup()` using it. Tests that touch the ORM need `@pytest.mark.django_db(transaction=True)`.
+`DATABASE_URL` must be set in the environment. `tests/conftest.py` calls `django.setup()` using it. `tests/unit/` mocks the ORM and never touches a real DB; `tests/integration/` runs against the real Postgres + pgvector configured by `DATABASE_URL`.
 
 ---
 
@@ -16,22 +16,35 @@ pytest
 
 ```
 tests/
-  conftest.py               session-scoped pipeline fixture; splittable_result;
-                            per-image/person parametrised fixtures; real images at tests/examples/
+  conftest.py               Django test setup; session-scoped pipeline fixture (cluster_result);
+                            splittable_result; per-image/person parametrised fixtures; real images at tests/examples/
   examples/
     person1/ … person4/     real face photos used by pipeline integration fixtures
   unit/
-    conftest.py             synthetic unit fixtures (logged_in_client hits DB, rest are DB-free)
-    helpers.py              chainable_qs, mock_identity_row, unit_vector
-    test_pipeline.py        extract_embedding, process_images, ClusterResult.split
-    test_services.py        ClusterProposal, propose_for_members, propose_matches, _query_candidates,
+    wizard/
+      conftest.py           synthetic, DB-free unit fixtures (query_centroid, unit_member,
+                            two_member_group, cluster_result_with_groups, strong_and_weak_match, close_matches)
+      helpers.py            chainable_qs, mock_identity_row, unit_vector
+      test_pipeline.py      extract_embedding, process_images, ClusterResult.split
+      test_services.py      ClusterProposal, propose_for_members, propose_matches, _query_candidates,
                             process_uploads, apply_split, create_assignment,
                             create_new_identity_assignment, persist_assignments, search_identities
-    test_models.py          Identity.update_centroid, Image.post_delete signal handler
-    test_serializers.py     round-trip serialize/deserialize for all data structures
-    test_views_wizard.py    wizard view tests
-    test_views_landing.py   landing page and dashboard tests
-    test_views_auth.py      login/logout view tests
+      test_dedup_models.py  Identity.update_centroid, Image.post_delete signal handler
+      test_serializers.py   round-trip serialize/deserialize for all data structures
+  integration/
+    conftest.py             logged_in_client (DB-backed test client fixture)
+    wizard/
+      test_views_wizard.py  4-step wizard view tests (session helpers _setup_result, _setup_proposals)
+      test_views_landing.py landing page and dashboard tests
+      test_views_auth.py    login/logout view tests
+    workflow/
+      test_workflow_models.py      Batch, Conversation, Identity, Image, ClusterReviewTicket model behaviour
+      test_create_tickets.py       create_tickets_from_result
+      test_service_get_kept_image_ids.py  get_kept_image_ids
+      test_submit_review.py        submit_ticket_review
+      test_ticket_models.py        ClusterReviewTicket querysets and .close()
+      test_ticket_list_view.py     ticket_list view
+      test_ticket_detail_view.py   ticket_detail view
 ```
 
 ---
@@ -41,7 +54,7 @@ tests/
 - **Flat functions** (`def test_...`) are the default.
 - **Class-grouped** tests (`class TestFoo`) are acceptable where they improve organisation.
 - Shared fixtures go in `conftest.py`. Module-specific fixtures that won't be reused elsewhere may be defined in the test file itself.
-- `tests/unit/` tests must not touch the real DB directly. Mock the ORM (see below).
+- `tests/unit/` tests must never touch the DB directly. Mock the ORM (see below).
 
 ---
 
@@ -69,10 +82,10 @@ Patch both `Identity` and `Image` at the module level and inject a `chainable_qs
 
 ```python
 from unittest.mock import patch, MagicMock
-from tests.unit.helpers import chainable_qs, mock_identity_row
+from tests.unit.wizard.helpers import chainable_qs, mock_identity_row
 from id_dedup.dedup.service.proposals import _query_candidates
 
-def test_collapses_per_identity(unit_member_embedding):
+def test_collapses_per_identity(query_centroid):
     rows = [
         mock_identity_row(identity_id=1, display_name="Alice", distance=0.1, image_count=3),
     ]
@@ -82,7 +95,7 @@ def test_collapses_per_identity(unit_member_embedding):
     ):
         MockIdentity.objects.filter.return_value = chainable_qs(rows)
         MockImage.objects.filter.return_value = chainable_qs([])
-        results = _query_candidates(unit_member_embedding, top_k=5, min_similarity=0.6, similarity_band=0.1)
+        results = _query_candidates(query_centroid, top_k=5, min_similarity=0.6, similarity_band=0.1)
     assert len(results) == 1
     assert results[0].matched_image_count == 3
 ```
@@ -114,7 +127,7 @@ For `search_identities`, patch `Identity.objects` and provide a `chainable_qs`:
 
 ```python
 from unittest.mock import patch
-from tests.unit.helpers import chainable_qs
+from tests.unit.wizard.helpers import chainable_qs
 from id_dedup.dedup.service.workflow import search_identities
 
 def test_search_merges_registry():
@@ -135,11 +148,10 @@ def test_search_merges_registry():
 | `mock_identity_row(identity_id, display_name, distance, image_count=1)` | `→ MagicMock` | Minimal Identity row mock with `.id`, `.display_name`, `.distance`, `.image_count` |
 | `unit_vector(seed)` | `int → np.ndarray` | Deterministic L2-normalised 512-d float32 vector |
 
-### Common fixtures (`tests/unit/conftest.py`)
+### Common fixtures (`tests/unit/wizard/conftest.py`)
 
 | Fixture | Description |
 |---|---|
-| `logged_in_client` | Test client logged in as `testuser` (**hits DB** — requires `@pytest.mark.django_db(transaction=True)`) |
 | `query_centroid` | `unit_vector(seed=0)` — a fixed centroid for `_query_candidates` tests |
 | `unit_member` | Single `ClusterMember` with deterministic embedding |
 | `two_member_group` | Two `ClusterMember` objects with different embeddings |
@@ -147,7 +159,7 @@ def test_search_merges_registry():
 | `strong_and_weak_match` | Two `IdentityMatch` objects with large similarity gap (0.9 vs 0.6) |
 | `close_matches` | Two `IdentityMatch` objects with small similarity gap (0.88 vs 0.85) |
 
-The `splittable_result` fixture is defined in the top-level `tests/conftest.py` (function-scoped, synthetic, no real images). Used by `test_pipeline.py` and `test_services.py` for split/apply_split tests.
+The `splittable_result` fixture is defined in the top-level `tests/conftest.py` (function-scoped, synthetic, no real images). Used by `test_pipeline.py` and `test_services.py` for split/apply_split tests. `logged_in_client` lives in `tests/integration/conftest.py` — it hits the DB and is only for integration tests.
 
 ### Common mocking patterns
 
@@ -169,7 +181,7 @@ with patch.object(pathlib.Path, "exists", return_value=True):
     summary = persist_assignments(assignments, [proposal], tmpdir_name=None)
 ```
 
-**Model instantiation without DB:** `test_models.py` uses `Identity.__new__(Identity)` to create model instances that bypass `__init__` and avoid DB calls, then tests with patched `save()`.
+**Model instantiation without DB:** `test_dedup_models.py` uses `Identity.__new__(Identity)` to create model instances that bypass `__init__` and avoid DB calls, then tests with patched `save()`.
 
 **Django signal testing:** The `Image.post_delete` signal handler is tested by directly sending the signal:
 
@@ -182,7 +194,7 @@ post_delete.send(sender=Image, instance=fake_image, using="default")
 
 ## View tests
 
-View tests use Django's test client. Session state is set up via helper functions defined at the top of `test_views_wizard.py` (not fixtures):
+Wizard view tests live in `tests/integration/wizard/test_views_wizard.py` and use Django's test client. Session state is set up via helper functions defined at the top of the file (not fixtures):
 
 - `_setup_result(client, result)` — serialises a `ClusterResult` into the session.
 - `_setup_proposals(client, proposals, adj_index)` — serialises proposals and sets `adj_index`.
@@ -191,7 +203,9 @@ These call functions from `dedup/serializers.py` (`serialize_result`, `serialize
 
 Module-level factory functions `_result()` and `_proposals(count)` create test data (`ClusterResult` and `list[ClusterProposal]`) without touching the DB.
 
-Mark any test that hits the ORM with `@pytest.mark.django_db(transaction=True)`. This includes `search`, `complete`, and `assign` with a DB-backed identity. Tests that only exercise session logic and return HTML fragments generally do not need it.
+Wizard view tests that touch the ORM or use session state across requests need `@pytest.mark.django_db(transaction=True)` — this includes `search`, `complete`, and `assign` with a DB-backed identity, plus the auth/landing tests. Tests that only exercise session logic and return HTML fragments generally do not need it.
+
+Workflow view tests (`tests/integration/workflow/test_ticket_list_view.py`, `test_ticket_detail_view.py`) use `@pytest.mark.django_db` and the `logged_in_client` fixture from `tests/integration/conftest.py`. Note: `submit_review` → `submit_ticket_review` calls `process_reviewed_set.delay(...)`, so the submit-review tests (and `test_submit_review.py`) need a reachable Redis broker — no Celery eager mode is configured.
 
 HTMX redirect responses carry an `HX-Redirect` header; the Django test client exposes the final URL as `resp.url`. Check that, not the response body.
 
@@ -200,11 +214,11 @@ HTMX redirect responses carry an `HX-Redirect` header; the Django test client ex
 ## What not to do
 
 - Do not put shared/reusable fixtures inside test files — those belong in `conftest.py`.
-- Do not write DB-hitting tests in `tests/unit/` outside the view tests. Mock the ORM.
-- Do not use `@pytest.mark.django_db` without `transaction=True` — session-backed tests need it.
+- Do not write DB-hitting tests in `tests/unit/`. Mock the ORM; anything needing a real DB belongs in `tests/integration/`.
+- Do not use `@pytest.mark.django_db` without `transaction=True` for wizard view tests — session-backed tests need it.
 
 ---
 
-## Future: integration tests
+## Integration tests
 
-`tests/integration/` does not exist yet. When it does, it will contain tests that require a live PostgreSQL + pgvector instance and real embeddings. Keep those separate from `tests/unit/`.
+`tests/integration/` requires a live PostgreSQL + pgvector instance (`DATABASE_URL`) and, for the submit-review path, a reachable Redis broker. Keep these separate from the DB-free unit tests under `tests/unit/`.
