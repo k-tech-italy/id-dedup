@@ -1,6 +1,6 @@
 # Deduplication flow (id_dedup.dedup)
 
-> **Scope:** This document describes the `id_dedup.dedup` app — the original session-based 4-step wizard, kept for demos. The new ticket-based async design lives in `id_dedup.workflow` and is documented separately as it is built out.
+> **Scope:** This document describes the `id_dedup.dedup` app — the original session-based 4-step wizard, kept for demos. The ticket-based async design lives in `id_dedup.workflow` and is covered in [`architecture.md`](architecture.md).
 
 ## Overview
 
@@ -169,6 +169,6 @@ Guards: redirects back to the first unassigned cluster if any exist (or to uploa
 
 ---
 
-## Hard constraint: no auto-assignment
+## Hard constraint: no auto-assignment (dedup app)
 
 Nothing in `pipeline.py`, `service/proposals.py`, `service/workflow.py`, or `views.py` ever automatically assigns a cluster to an identity. Every `identity_id` in `wizard_assignments` originates from an explicit user POST to `assign` or `new_identity`. Do not change this.
