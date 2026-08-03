@@ -7,8 +7,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST, require_safe
 
 from id_dedup.typing.request import AuthenticatedHttpRequest
+from id_dedup.workflow import service
 from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet
-from id_dedup.workflow.service import get_kept_image_ids, submit_ticket_review
 
 
 @require_safe
@@ -35,8 +35,11 @@ def ticket_detail(request: HttpRequest, pk: str) -> HttpResponse:
         ClusterReviewTicket.objects.select_related("batch").prefetch_related("images"),
         pk=pk,
     )
-    kept_ids = get_kept_image_ids(ticket)
-    return render(request, "workflow/ticket_detail.html", {"ticket": ticket, "kept_ids": kept_ids})
+    return render(
+        request,
+        "workflow/ticket_detail.html",
+        {"ticket": ticket, "kept_ids": service.get_kept_image_ids(ticket)},
+    )
 
 
 @require_POST
@@ -52,6 +55,5 @@ def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
         msg += "."
         messages.info(request, msg)
         return redirect("workflow:ticket_list")
-    kept_ids = request.POST.getlist("keep")
-    submit_ticket_review(ticket, user=request.user, kept_ids=kept_ids)
+    service.submit_ticket_review(ticket, user=request.user, kept_ids=request.POST.getlist("keep"))
     return redirect("workflow:ticket_list")
