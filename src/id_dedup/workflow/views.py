@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST, require_safe
 
 from id_dedup.typing.request import AuthenticatedHttpRequest
 from id_dedup.workflow import service
-from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet
+from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet, TicketAlreadyClosed
 
 
 @require_safe
@@ -45,7 +45,7 @@ def ticket_detail(request: HttpRequest, pk: str) -> HttpResponse:
 @require_POST
 @login_required
 def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
-    """Close the ticket and dispatch the next-stage task for kept images."""
+    """Close the ticket and write the durable outbox dispatch for kept images."""
     ticket = get_object_or_404(ClusterReviewTicket.objects, pk=pk)
     if ticket.is_closed:
         reviewed_by = ticket.reviewed_by
@@ -55,5 +55,8 @@ def submit_review(request: AuthenticatedHttpRequest, pk: str) -> HttpResponse:
         msg += "."
         messages.info(request, msg)
         return redirect("workflow:ticket_list")
-    service.submit_ticket_review(ticket, user=request.user, kept_ids=request.POST.getlist("keep"))
+    try:
+        service.submit_ticket_review(ticket, user=request.user, kept_ids=request.POST.getlist("keep"))
+    except TicketAlreadyClosed as exc:
+        messages.info(request, str(exc))
     return redirect("workflow:ticket_list")

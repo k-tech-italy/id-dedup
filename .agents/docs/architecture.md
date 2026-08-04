@@ -78,6 +78,20 @@ This rule is **scoped to the dedup app**. The workflow app has its own write pat
 
 ---
 
+## Conditional UPDATE pattern for idempotent state transitions
+
+Both `ClusterReviewTicket.close()` and `Conversation.close()` use the same pattern: a conditional `UPDATE … WHERE <timestamp> IS NULL` instead of a `self.<field> = …; self.save()`. This exists for two reasons:
+
+1. **Atomicity.** A naive `self.save()` is two steps — read the stale in-memory object, then write it back. Two concurrent callers can both read the pre-close state and both succeed. The conditional UPDATE collapses check-and-write into a single DB statement; exactly one caller's WHERE clause matches.
+
+2. **No clobbering.** `self.save(update_fields=[…])` writes every field touched in the transaction, not just the one being set. The conditional UPDATE only touches the timestamp (and optionally `reviewed_by`), so concurrent changes to `summary` or other fields are never overwritten.
+
+The return value (`updated == 1`) lets callers distinguish "I closed it" from "it was already closed", enabling idempotent retry and early-out logic in the service layer.
+
+This pattern is safe inside or outside a transaction boundary. The `@transaction.atomic` on the service layer guarantees the surrounding operation (e.g. `remove_from_pending` + `is_drained` + `close`) commits as a unit, but does not prevent two separate callers from racing on `close()` itself.
+
+---
+
 ## Hard constraint: no auto-assignment (dedup app)
 
 Nothing in `pipeline.py`, `service/proposals.py`, `service/workflow.py`, or `dedup/views.py` ever automatically assigns a cluster to an identity. Every `identity_id` in `wizard_assignments` originates from an explicit user POST to `assign` or `new_identity`. Do not change this.

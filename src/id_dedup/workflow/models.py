@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import uuid
 from typing import TYPE_CHECKING, Any, Self, override
 
@@ -78,6 +79,10 @@ class ConversationQuerySet(models.QuerySet):
         """Return the conversations in this queryset that resulted in an error."""
         return self.exclude(error_message="")
 
+    def upload_for_batch(self, batch_id: str) -> Self:
+        """Return the UPLOAD conversation for a batch (identified via summary JSON)."""
+        return self.filter(trigger=Trigger.UPLOAD, summary__batch_id=str(batch_id))
+
 
 ConversationManager = models.Manager.from_queryset(ConversationQuerySet)
 
@@ -115,6 +120,76 @@ class Conversation(models.Model):
     @override
     def __str__(self) -> str:
         return str(self.id)
+
+    @staticmethod
+    def create_for_cluster_review(
+        *,
+        ticket: ClusterReviewTicket,
+        user: User | None,
+        kept_ids: list[str],
+        parent: Conversation | None,
+    ) -> Conversation:
+        """
+        Create the CLUSTER_REVIEW conversation tracking a review's kept survivors.
+
+        The conversation owns its pending set (`kept_ids`) and stays pending
+        until those images reach a terminal state. `parent` is the upload
+        conversation (lineage only, referenced by ID) and is never mutated.
+        No `ended_at` is set here.
+        """
+        return Conversation.objects.create(
+            trigger=Trigger.CLUSTER_REVIEW,
+            parent=parent,
+            user=user,
+            summary={
+                "ticket_id": str(ticket.pk),
+                "cluster_label": ticket.cluster_label,
+                "kept_count": len(kept_ids),
+                "discarded_count": ticket.images.count() - len(kept_ids),
+                "kept_image_ids": copy.copy(kept_ids),
+                "pending_image_ids": copy.copy(kept_ids),
+                "reviewed_by": user.username if user else None,
+            },
+        )
+
+    def remove_from_pending(self, drained_ids: list[str]) -> None:
+        """
+        Remove the given image IDs from the pending set.
+
+        The pending set lives in `summary.pending_image_ids` and tracks
+        in-flight images (singletons for UPLOAD conversations; kept survivors
+        for CLUSTER_REVIEW conversations). This method is idempotent: IDs not
+        present in the set are silently ignored.
+        """
+        pending = set(self.summary.get("pending_image_ids", [])) - set(drained_ids)
+        self.summary["pending_image_ids"] = list(pending)
+        self.save(update_fields=["summary"])
+
+    def is_drained(self) -> bool:
+        """Return True if the pending image set is empty."""
+        return not self.summary.get("pending_image_ids", [])
+
+    def close(self) -> bool:
+        """
+        Close the conversation at the current timestamp.
+
+        Returns `True` if this call closed the conversation; `False` if it
+        was already closed or the conversation was contested and another
+        caller won the race.
+        """
+        # use a single `UPDATE` SQL statement to check that the
+        # conversation is open and update it.
+        #
+        # This makes the operation idempotent and race-safe: winner sets
+        # the field and returns `True`, losers don't clobber the field
+        # and return `False`.
+        #
+        # `save()` would not guarantee idempotency, as it would always
+        # succeed for every caller regardless of who wins the race
+        updated = Conversation.objects.filter(pk=self.pk, ended_at__isnull=True).update(ended_at=timezone.now())
+        if updated:
+            self.refresh_from_db()
+        return updated == 1
 
 
 class Identity(models.Model):
@@ -166,6 +241,10 @@ class ClusterReviewTicketQuerySet(models.QuerySet):
 ClusterReviewTicketManager = models.Manager.from_queryset(ClusterReviewTicketQuerySet)
 
 
+class TicketAlreadyClosed(Exception):
+    """A ticket was already closed, or the close lost a race against another caller."""
+
+
 class ClusterReviewTicket(models.Model):
     """Workflow ticket representing a single cluster awaiting user review and adjudication."""
 
@@ -190,28 +269,28 @@ class ClusterReviewTicket(models.Model):
     def __str__(self) -> str:
         return f"Ticket {self.id} (cluster {self.cluster_label})"
 
-    def close(self, user: User | None = None) -> None:
+    def close(self, user: User | None = None) -> bool:
         """
-        Mark the ticket as closed at the current timestamp.
+        Close the ticket at the current timestamp, recording *reviewed_by*.
 
-        Persists the closing user via *reviewed_by* to preserve
-        accountability even after the ticket is closed.
+        Persists the closing user via *reviewed_by* to preserve accountability
+        even after the ticket is closed. Uses an atomic conditional `UPDATE`
+        (`WHERE closed_at IS NULL`) so the check-and-write is atomic and
+        concurrent callers never overwrite unrelated fields.
 
-        Uses an atomic conditional ``UPDATE`` so concurrent callers
-        never overwrite unrelated fields — the DB-level ``WHERE
-        closed_at IS NULL`` guard makes the check-and-write atomic.
+        Returns `True` if this call claimed the ticket; `False` if it was
+        already closed or another caller won the race.
         """
         if self.is_closed:
-            return
+            return False
 
-        # NOTE: this mitigates a race condition where two users are
-        # trying to close the same ticket at the same time.
-        ClusterReviewTicket.objects.filter(pk=self.pk, closed_at__isnull=True).update(
+        updated = ClusterReviewTicket.objects.filter(pk=self.pk, closed_at__isnull=True).update(
             closed_at=timezone.now(),
             reviewed_by=user if user is not None else self.reviewed_by,
         )
 
         self.refresh_from_db()
+        return updated == 1
 
     @property
     def is_closed(self) -> bool:

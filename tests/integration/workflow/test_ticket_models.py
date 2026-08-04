@@ -72,3 +72,19 @@ class TestClusterReviewTicketQuerySet:
 
         assert ClusterReviewTicket.objects.open().count() == 0
         assert ClusterReviewTicket.objects.closed().count() == 1
+
+    def test_close_returns_true_when_claiming_ticket(self):
+        from id_dedup.workflow.models import Batch, ClusterReviewTicket
+
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        assert ticket.close() is True
+
+    def test_close_returns_false_when_already_closed(self):
+        from id_dedup.workflow.models import Batch, ClusterReviewTicket
+
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        ticket.close()
+        ticket.refresh_from_db()
+        assert ticket.close() is False

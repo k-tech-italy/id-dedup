@@ -5,10 +5,8 @@ from typing import TYPE_CHECKING
 
 from django.core.files import File
 from django.db import transaction
-from django.utils import timezone
 
-from .models import Batch, ClusterReviewTicket, Conversation, Image, Trigger
-from .tasks import process_reviewed_set
+from .models import Batch, ClusterReviewTicket, Conversation, Image, OutboxMessage, TicketAlreadyClosed, Trigger
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
@@ -67,38 +65,74 @@ def get_kept_image_ids(ticket: ClusterReviewTicket) -> set[str]:
 
 
 @transaction.atomic
+def close_if_drained(conversation: Conversation, drained_ids: list[str] | None = None) -> bool:
+    """
+    Remove drained image IDs from the pending set and close if empty.
+
+    Business-logic orchestration over three model primitives:
+    ``Conversation.remove_from_pending``, ``Conversation.is_drained``,
+    and ``Conversation.close``.
+
+    Returns whether this call closed the conversation.
+    """
+    if drained_ids:
+        conversation.remove_from_pending(drained_ids)
+    if conversation.is_drained():
+        return conversation.close()
+    return False
+
+
+@transaction.atomic
 def submit_ticket_review(
     ticket: ClusterReviewTicket,
     user: User | None = None,
     kept_ids: list[str] | None = None,
-) -> None:
+) -> list[str]:
     """
     Finalise a cluster review by closing the ticket and advancing kept images.
 
-    Closes the ticket (recording the reviewing user), creates a *CLUSTER_REVIEW*
-    conversation to audit the outcome, and dispatches a *process_reviewed_set*
-    task with the list of kept image IDs.
+    Closes the ticket (recording the reviewing user), creates a separate
+    *CLUSTER_REVIEW* conversation tracking the kept survivors (parented to the
+    upload conversation, lineage only), and writes a durable *OutboxMessage*
+    for auto-adjudication of the kept set — all in one transaction.
+
+    Raises :class:`TicketAlreadyClosed` if the ticket is already closed or the
+    close lost a race against another caller. Returns the normalized kept image
+    IDs (ticket members only, order-preserving, deduplicated).
     """
     if ticket.is_closed:
-        raise ValueError(f"Ticket {ticket.id} is already closed")
+        raise TicketAlreadyClosed(f"Ticket {ticket.id} is already closed")
 
-    ticket.close(user=user)
+    claimed = ticket.close(user=user)
+    if not claimed:
+        raise TicketAlreadyClosed(f"Ticket {ticket.id} lost the close race")
 
-    kept_ids = kept_ids or []
-    total = ticket.images.count()
+    ticket_image_pks = {str(pk) for pk in ticket.images.values_list("pk", flat=True)}
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in kept_ids or []:
+        pk = str(raw)
+        if pk in ticket_image_pks and pk not in seen:
+            seen.add(pk)
+            normalized.append(pk)
 
-    Conversation.objects.create(
-        trigger=Trigger.CLUSTER_REVIEW,
+    parent = Conversation.objects.upload_for_batch(ticket.batch_id).first()
+    conversation = Conversation.create_for_cluster_review(
+        ticket=ticket,
         user=user,
-        summary={
-            "ticket_id": str(ticket.id),
-            "cluster_label": ticket.cluster_label,
-            "kept_count": len(kept_ids),
-            "discarded_count": total - len(kept_ids),
-            "kept_image_ids": [str(i) for i in kept_ids],
-            "reviewed_by": user.username if user else None,
-        },
-        ended_at=timezone.now(),
+        kept_ids=normalized,
+        parent=parent,
     )
 
-    process_reviewed_set.delay(ticket_id=str(ticket.id), kept_ids=kept_ids, user_id=user.pk if user else None)
+    if normalized:
+        OutboxMessage.objects.create(
+            task_name="id_dedup.workflow.tasks.auto_adjudicate_set",
+            payload={
+                "image_ids": normalized,
+                "conversation_id": str(conversation.pk),
+                "user_id": user.pk if user else None,
+            },
+        )
+
+    close_if_drained(conversation)
+    return normalized
