@@ -319,18 +319,17 @@ def test_process_uploads_uses_default_filename_when_missing(tmp_path):
 
 
 def test_process_uploads_rejects_non_image(tmp_path):
-    from io import BytesIO
-
     import pytest
 
     from id_dedup.dedup.service.workflow import process_uploads
+    from id_dedup.images import UnsupportedImageType
 
     mock_file = MagicMock()
     mock_file.name = "doc.pdf"
     mock_file.read.return_value = b"%PDF-1.4 garbage"
     mock_file.seek = MagicMock()
 
-    with pytest.raises(ValueError, match="Unsupported"):
+    with pytest.raises(UnsupportedImageType, match="Unsupported"):
         process_uploads([mock_file], tmp_path)
 
 
@@ -338,13 +337,14 @@ def test_process_uploads_rejects_disguised_file(tmp_path):
     import pytest
 
     from id_dedup.dedup.service.workflow import process_uploads
+    from id_dedup.images import UnsupportedImageType
 
     mock_file = MagicMock()
     mock_file.name = "photo.jpg"
     mock_file.read.return_value = b"%PDF-1.4 garbage"
     mock_file.seek = MagicMock()
 
-    with pytest.raises(ValueError, match="Unsupported"):
+    with pytest.raises(UnsupportedImageType, match="Unsupported"):
         process_uploads([mock_file], tmp_path)
 
 

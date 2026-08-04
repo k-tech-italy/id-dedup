@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 from django.core.files import File
 from django.db import transaction
 
+from id_dedup.images import UnsupportedImageType, is_valid_image
 from id_dedup.ml import pipeline
+
 from ..models import Identity, Image
 
 if TYPE_CHECKING:
@@ -17,23 +19,8 @@ if TYPE_CHECKING:
     from django.core.files.uploadedfile import UploadedFile
 
     from id_dedup.ml.pipeline import ClusterResult
+
     from .proposals import ClusterProposal
-
-
-_JPEG = b'\xff\xd8\xff'
-_PNG = b'\x89PNG\r\n\x1a\n'
-
-
-def _is_allowed_image(f) -> bool:
-    header = f.read(12)
-    f.seek(0)
-    if header[:3] == _JPEG:
-        return True
-    if header[:8] == _PNG:
-        return True
-    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
-        return True
-    return False
 
 
 def process_uploads(
@@ -43,10 +30,10 @@ def process_uploads(
 ) -> ClusterResult:
     uploads = list(uploads or [])
 
-    invalid = [f.name for f in uploads if not _is_allowed_image(f)]
+    invalid = [f.name for f in uploads if not is_valid_image(f)]
     if invalid:
-        raise ValueError(
-            f"Unsupported file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted."
+        raise UnsupportedImageType(
+            f"Unsupported file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted.",
         )
 
     tmpdir = Path(tmpdir)

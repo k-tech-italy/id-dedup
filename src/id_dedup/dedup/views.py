@@ -16,6 +16,8 @@ from django.utils import timezone
 from django.views import View
 from django.views.decorators.http import require_POST, require_safe
 
+from id_dedup.images import UnsupportedImageType
+
 from . import serializers
 from .service import proposals, workflow
 
@@ -149,7 +151,7 @@ class Upload(LoginRequiredMixin, View):
 
         try:
             result = workflow.process_uploads(files, tmpdir)
-        except ValueError as exc:
+        except UnsupportedImageType as exc:
             shutil.rmtree(tmpdir, ignore_errors=True)
             return render(request, "wizard/upload.html", {"wizard_step": "upload", "error": str(exc)})
         except Exception:
