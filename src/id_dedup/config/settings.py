@@ -176,6 +176,10 @@ LOGIN_URL = reverse_lazy("login")
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
+# Workflow outbox
+# Max attempts before an undeliverable OutboxMessage is dead-lettered.
+OUTBOX_MAX_ATTEMPTS = int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5"))
+
 # Cache (used by Celery for result passing)
 CACHES = {
     "default": {

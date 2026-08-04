@@ -17,6 +17,41 @@ if TYPE_CHECKING:
     from django.contrib.auth.models import User
 
 
+def _default_max_attempts() -> int:
+    return getattr(settings, "OUTBOX_MAX_ATTEMPTS", 5)
+
+
+class OutboxMessage(models.Model):
+    """Durable record of a Celery dispatch that must not be lost."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    task_name = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+    max_attempts = models.PositiveIntegerField(default=_default_max_attempts)
+    dead_lettered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Index serving the sweep; a cap-less row is rejected by the check constraint."""
+
+        indexes = [
+            models.Index(
+                fields=["dispatched_at", "dead_lettered_at", "attempts", "created_at"],
+                name="outbox_pending_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(max_attempts__gte=1), name="outbox_max_attempts_positive"),
+        ]
+
+    @override
+    def __str__(self) -> str:
+        return str(self.id)
+
+
 class Batch(models.Model):
     """A grouping of image uploads."""
 
@@ -93,7 +128,9 @@ class Identity(models.Model):
     class Meta:
         """HNSW index on centroid for fast cosine-similarity lookups."""
 
-        indexes = [HnswIndex(name="wf_identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"])]
+        indexes = [
+            HnswIndex(name="workflow_identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"]),
+        ]
 
     @override
     def __str__(self) -> str:
@@ -200,9 +237,12 @@ class Image(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """HNSW index on embedding for fast cosine-similarity lookups."""
+        """HNSW index on embedding for fast cosine-similarity lookups; source_image must be unique."""
 
-        indexes = [HnswIndex(name="wf_embedding_idx", fields=["embedding"], opclasses=["vector_cosine_ops"])]
+        indexes = [HnswIndex(name="workflow_embedding_idx", fields=["embedding"], opclasses=["vector_cosine_ops"])]
+        constraints = [
+            models.UniqueConstraint(fields=["source_image"], name="image_source_image_unique"),
+        ]
 
     @override
     def __str__(self) -> str:
