@@ -8,11 +8,12 @@ import numpy as np
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from model_bakery import baker
 
 from id_dedup.dedup import serializers
 from id_dedup.dedup.models import Identity
-from id_dedup.ml.pipeline import ClusterMember, ClusterResult
 from id_dedup.dedup.service.proposals import ClusterProposal, IdentityMatch
+from id_dedup.ml.pipeline import ClusterMember, ClusterResult
 
 
 def _result() -> ClusterResult:
@@ -247,6 +248,7 @@ class TestWizardSplit:
     @pytest.mark.django_db(transaction=True)
     def test_split_filenames_list_payload_returns_200(self, logged_in_client):
         import json
+
         result = _result()
         _setup_result(logged_in_client, result)
         file_to_move = result.clusters[0][0].file
@@ -288,6 +290,7 @@ class TestWizardReviewSave:
     @pytest.mark.django_db(transaction=True)
     def test_save_removes_cluster_result_from_session(self, logged_in_client):
         from unittest.mock import patch
+
         _setup_result(logged_in_client, _result())
         with patch("id_dedup.dedup.views.proposals.propose_matches", return_value=[]):
             logged_in_client.post(reverse("wizard:review_save"))
@@ -296,6 +299,7 @@ class TestWizardReviewSave:
     @pytest.mark.django_db(transaction=True)
     def test_save_writes_proposals_to_session_and_redirects(self, logged_in_client):
         from unittest.mock import patch
+
         fake_proposal = _proposals(1)[0]
         _setup_result(logged_in_client, _result())
         with patch("id_dedup.dedup.views.proposals.propose_matches", return_value=[fake_proposal]):
@@ -498,8 +502,7 @@ class TestWizardAdjudication:
         proposals = _proposals(3)
         _setup_proposals(logged_in_client, proposals, adj_index=0)
 
-        identity = Identity.objects.create(display_name="DB Person")
-
+        identity = baker.make_recipe("tests.identity", display_name="DB Person")
         resp = logged_in_client.post(reverse("wizard:assign"), {"identity_id": str(identity.pk)})
         assert resp.status_code == 302
 
@@ -535,7 +538,7 @@ class TestWizardAdjudication:
         _setup_proposals(logged_in_client, proposals, adj_index=0)
 
         match = proposals[0].proposed_matches[0]
-        Identity.objects.create(pk=match.identity_id, display_name=match.display_name)
+        baker.make_recipe("tests.identity", pk=match.identity_id, display_name=match.display_name)
 
         resp = logged_in_client.post(reverse("wizard:assign"), {"identity_id": str(match.identity_id)})
         assert resp.status_code == 302
@@ -580,9 +583,9 @@ class TestWizardAdjudication:
 
     @pytest.mark.django_db(transaction=True)
     def test_search_returns_results(self, logged_in_client):
-        Identity.objects.create(display_name="Alice")
-        Identity.objects.create(display_name="Bob")
-        Identity.objects.create(display_name="Albert")
+        baker.make_recipe("tests.identity", display_name="Alice")
+        baker.make_recipe("tests.identity", display_name="Bob")
+        baker.make_recipe("tests.identity", display_name="Albert")
 
         resp = logged_in_client.get(reverse("wizard:search"), {"q": "Ali"})
         assert resp.status_code == 200
@@ -604,7 +607,7 @@ class TestWizardAdjudication:
 
     @pytest.mark.django_db(transaction=True)
     def test_search_escapes_html_in_display_name(self, logged_in_client):
-        Identity.objects.create(display_name='<script>alert(1)</script> "x"')
+        baker.make_recipe("tests.identity", display_name='<script>alert(1)</script> "x"')
 
         resp = logged_in_client.get(reverse("wizard:search"), {"q": "script"})
         content = resp.content.decode()
@@ -614,7 +617,7 @@ class TestWizardAdjudication:
 
     @pytest.mark.django_db(transaction=True)
     def test_search_includes_session_identities(self, logged_in_client):
-        Identity.objects.create(display_name="Alice")
+        baker.make_recipe("tests.identity", display_name="Alice")
 
         session = logged_in_client.session
         session["wizard_new_identities"] = {
@@ -631,7 +634,7 @@ class TestWizardAdjudication:
 
     @pytest.mark.django_db(transaction=True)
     def test_search_deduplicates_session_and_db(self, logged_in_client):
-        Identity.objects.create(display_name="Alice")
+        baker.make_recipe("tests.identity", display_name="Alice")
 
         session = logged_in_client.session
         session["wizard_new_identities"] = {str(uuid.uuid4()): "Alice"}
@@ -706,7 +709,7 @@ class TestWizardComplete:
         _setup_proposals(logged_in_client, proposals, adj_index=1)
 
         deleted_id = str(uuid.uuid4())
-        existing = Identity.objects.create(display_name="Existing")
+        existing = baker.make_recipe("tests.identity", display_name="Existing")
         session = logged_in_client.session
         session["wizard_assignments"] = {
             "0": {"identity_id": deleted_id, "display_name": "Ghost", "is_new": False},
@@ -725,7 +728,7 @@ class TestWizardComplete:
     def test_complete_clears_session(self, logged_in_client):
         proposals = _proposals(2)
         _setup_proposals(logged_in_client, proposals, adj_index=1)
-        existing = Identity.objects.create(display_name="Alice")
+        existing = baker.make_recipe("tests.identity", display_name="Alice")
         session = logged_in_client.session
         session["wizard_assignments"] = {
             "0": {"identity_id": str(existing.pk), "display_name": "Alice", "is_new": False},

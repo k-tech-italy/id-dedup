@@ -1,8 +1,6 @@
 import pytest
 from django.urls import reverse
 
-from id_dedup.workflow.models import Batch, ClusterReviewTicket
-
 
 @pytest.mark.django_db
 class TestTicketListView:
@@ -32,24 +30,20 @@ class TestTicketListView:
         response = logged_in_client.get(self._url(status="invalid"))
         assert response.context["status"] == "open"
 
-    def test_open_ticket_appears_in_open_tab(self, logged_in_client, django_user_model):
-        ticket = ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
+    def test_open_ticket_appears_in_open_tab(self, logged_in_client, django_user_model, open_ticket):
         response = logged_in_client.get(self._url(status="open"))
-        assert ticket in response.context["tickets"]
+        assert open_ticket in response.context["tickets"]
 
-    def test_open_ticket_absent_from_closed_tab(self, logged_in_client, django_user_model):
-        ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
+    def test_open_ticket_absent_from_closed_tab(self, logged_in_client, django_user_model, open_ticket):
         response = logged_in_client.get(self._url(status="closed"))
         assert list(response.context["tickets"]) == []
 
-    def test_closed_ticket_appears_in_closed_tab(self, logged_in_client, django_user_model):
-        ticket = ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
-        ticket.close()
+    def test_closed_ticket_appears_in_closed_tab(self, logged_in_client, django_user_model, open_ticket):
+        open_ticket.close()
         response = logged_in_client.get(self._url(status="closed"))
-        assert ticket in response.context["tickets"]
+        assert open_ticket in response.context["tickets"]
 
-    def test_closed_ticket_absent_from_open_tab(self, logged_in_client, django_user_model):
-        ticket = ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
-        ticket.close()
+    def test_closed_ticket_absent_from_open_tab(self, logged_in_client, django_user_model, open_ticket):
+        open_ticket.close()
         response = logged_in_client.get(self._url(status="open"))
         assert list(response.context["tickets"]) == []

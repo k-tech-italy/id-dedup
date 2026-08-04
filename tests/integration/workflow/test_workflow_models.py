@@ -1,57 +1,46 @@
-import datetime
 from typing import cast
 
 import pytest
+from model_bakery import baker
 
-from id_dedup.workflow.models import Conversation, ConversationQuerySet, Trigger
+from id_dedup.workflow.models import Conversation, ConversationQuerySet
 
 
 @pytest.mark.django_db
 class TestConversationQuerySet:
-    def test_pending_returns_unended_conversations(self):
-        c1 = Conversation.objects.create(trigger=Trigger.UPLOAD)
-        Conversation.objects.create(
-            trigger=Trigger.UPLOAD,
-            ended_at=datetime.datetime(2026, 7, 23, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        )
-        Conversation.objects.create(trigger=Trigger.UPLOAD, error_message="oops")
-
+    def test_pending_returns_unended_conversations(
+        self,
+        open_conversation,
+        completed_conversation,
+        errored_conversation,
+    ):
         assert list(cast("ConversationQuerySet", Conversation.objects).pending().values_list("pk", flat=True)) == [
-            c1.pk,
+            open_conversation.pk,
         ]
 
-    def test_completed_returns_ended_without_error(self):
-        Conversation.objects.create(trigger=Trigger.UPLOAD)
-        c2 = Conversation.objects.create(
-            trigger=Trigger.UPLOAD,
-            ended_at=datetime.datetime(2026, 7, 23, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        )
-        Conversation.objects.create(
-            trigger=Trigger.UPLOAD,
-            ended_at=datetime.datetime(2026, 7, 23, 12, 0, 0, tzinfo=datetime.timezone.utc),
-            error_message="oops",
-        )
-
+    def test_completed_returns_ended_without_error(
+        self,
+        open_conversation,
+        completed_conversation,
+        errored_conversation,
+    ):
         assert list(cast("ConversationQuerySet", Conversation.objects).completed().values_list("pk", flat=True)) == [
-            c2.pk,
+            completed_conversation.pk,
         ]
 
-    def test_errored_returns_conversations_with_error(self):
-        Conversation.objects.create(trigger=Trigger.UPLOAD)
-        Conversation.objects.create(
-            trigger=Trigger.UPLOAD,
-            ended_at=datetime.datetime(2026, 7, 23, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        )
-        c3 = Conversation.objects.create(trigger=Trigger.UPLOAD, error_message="oops")
-
+    def test_errored_returns_conversations_with_error(
+        self,
+        open_conversation,
+        completed_conversation,
+        errored_conversation,
+    ):
         assert list(cast("ConversationQuerySet", Conversation.objects).errored().values_list("pk", flat=True)) == [
-            c3.pk,
+            errored_conversation.pk,
         ]
 
-    def test_errored_excludes_empty_error_message(self):
-        Conversation.objects.create(trigger=Trigger.UPLOAD, error_message="")
-        c2 = Conversation.objects.create(trigger=Trigger.UPLOAD, error_message="oops")
+    def test_errored_excludes_empty_error_message(self, errored_conversation):
+        baker.make_recipe("tests.errored_conversation", error_message="")
 
         assert list(cast("ConversationQuerySet", Conversation.objects).errored().values_list("pk", flat=True)) == [
-            c2.pk,
+            errored_conversation.pk,
         ]
