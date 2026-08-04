@@ -51,6 +51,7 @@ ignore = [
     "Q000", # [*] Single quotes found but double quotes preferred
     "ERA001", # Found commented-out code
     "ANN204", # Missing return type annotation for special method `__init__`
+    "N818", # exception names omit the Error suffix (domain-exception convention)
 ]
 
 [format]
