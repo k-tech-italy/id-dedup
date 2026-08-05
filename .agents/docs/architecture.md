@@ -107,6 +107,7 @@ The workflow app is different by design: auto-adjudication of kept survivors is 
 - Docstrings should be as descriptive as needed. Inline comments explain *why*, not *what*; multi-line comments are fine when a single line can't capture a design decision.
 - No Django Forms, no DRF. Prefer function-based views; class-based views are acceptable when they meaningfully reduce complexity (e.g. dispatching multiple HTTP verbs).
 - **Model mutations live on the model.** State-changing operations are model methods (e.g. `Identity.update_centroid()`, `ClusterReviewTicket.close()`), not ad-hoc ORM calls in views or services.
+- **Creation/factory methods are static methods on the model — never QuerySet methods.** Precedent: `ClusterReviewTicket.new()`, `Conversation.create_for_cluster_review()`. A QuerySet method's job is filtering; constructing rows is the model's.
 - **Queries live on querysets when convenient.** Reusable filters become `QuerySet` methods (e.g. `ClusterReviewTicket.objects.open()`/`.closed()`, `Conversation.objects.pending()`).
 - Session keys are always prefixed `wizard_` (constant `SESSION_PREFIX = "wizard_"` in `views.py`).
 
