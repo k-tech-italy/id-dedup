@@ -83,7 +83,7 @@ Copy `.env.example` → `.env` and fill in `DATABASE_URL`, `SECRET_KEY`, and `RE
 ## Code conventions
 
 - **Ruff**: line-length 120, target py313, broad lint set (see `ruff.toml`). Double quotes, space indent.
-- **Model mutations live on the model; reusable queries go in `QuerySet` methods** when convenient.
+- **Model mutations live on the model; reusable queries go in `QuerySet` methods** when convenient. **Creation/factory methods are static methods on the model — never QuerySet methods** (precedent: `ClusterReviewTicket.new`, `Conversation.create_for_cluster_review`).
 
 ## Docs
 
