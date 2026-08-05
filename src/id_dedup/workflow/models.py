@@ -79,9 +79,9 @@ class ConversationQuerySet(models.QuerySet):
         """Return the conversations in this queryset that resulted in an error."""
         return self.exclude(error_message="")
 
-    def upload_for_batch(self, batch_id: str) -> Self:
+    def upload_for_batch(self, batch: Batch) -> Self:
         """Return the UPLOAD conversation for a batch (identified via summary JSON)."""
-        return self.filter(trigger=Trigger.UPLOAD, summary__batch_id=str(batch_id))
+        return self.filter(trigger=Trigger.UPLOAD, summary__batch_id=str(batch.pk))
 
 
 ConversationManager = models.Manager.from_queryset(ConversationQuerySet)
@@ -123,11 +123,10 @@ class Conversation(models.Model):
 
     @staticmethod
     def create_for_cluster_review(
-        *,
         ticket: ClusterReviewTicket,
-        user: User | None,
         kept_ids: list[str],
-        parent: Conversation | None,
+        user: User | None = None,
+        parent: Conversation | None = None,
     ) -> Conversation:
         """
         Create the CLUSTER_REVIEW conversation tracking a review's kept survivors.
@@ -135,7 +134,6 @@ class Conversation(models.Model):
         The conversation owns its pending set (`kept_ids`) and stays pending
         until those images reach a terminal state. `parent` is the upload
         conversation (lineage only, referenced by ID) and is never mutated.
-        No `ended_at` is set here.
         """
         return Conversation.objects.create(
             trigger=Trigger.CLUSTER_REVIEW,
@@ -269,6 +267,11 @@ class ClusterReviewTicket(models.Model):
     def __str__(self) -> str:
         return f"Ticket {self.id} (cluster {self.cluster_label})"
 
+    @staticmethod
+    def new(batch: Batch, cluster_label: int) -> ClusterReviewTicket:
+        """Create a cluster review ticket for one DBSCAN group (label >= 0)."""
+        return ClusterReviewTicket.objects.create(batch=batch, cluster_label=cluster_label)
+
     def close(self, user: User | None = None) -> bool:
         """
         Close the ticket at the current timestamp, recording *reviewed_by*.
@@ -326,6 +329,21 @@ class Image(models.Model):
     @override
     def __str__(self) -> str:
         return self.source_image.name
+
+    def assign_to_cluster(self, ticket: ClusterReviewTicket, embedding: list[float], *, save: bool = True) -> None:
+        """
+        Link this image to a cluster review ticket and store its embedding.
+
+        Persists by default. `save=False` defers the write to a `bulk_update`
+        (create_tickets_from_result), which is far cheaper for large clusters.
+        `updated_at` is set explicitly so the bulk path still bumps it (bulk
+        operations never fire `auto_now`).
+        """
+        self.cluster_ticket = ticket
+        self.embedding = embedding
+        self.updated_at = timezone.now()
+        if save:
+            self.save(update_fields=["cluster_ticket", "embedding", "updated_at"])
 
 
 @receiver(post_delete, sender=Image)
