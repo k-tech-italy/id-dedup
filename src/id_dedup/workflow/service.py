@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pathlib
+import time
 from typing import TYPE_CHECKING, cast
 
 from django.db import transaction
+
+from id_dedup.images import UnsupportedImageType, is_valid_image
 
 from .models import (
     Batch,
@@ -18,8 +21,52 @@ from .models import (
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
+    from django.core.files.uploadedfile import UploadedFile
 
     from id_dedup.ml.pipeline import ClusterResult
+
+
+class NoFilesUploaded(Exception):
+    """The upload request contained no files."""
+
+
+@transaction.atomic
+def register_upload(
+    uploads: list[UploadedFile] | None,
+    user_id: int | None = None,
+) -> Batch:
+    """
+    Validate uploads, register Batch + Image rows, and enqueue processing atomically.
+
+    Each file's name is uniquified with a `time.time_ns()` suffix so same-named
+    uploads cannot overwrite each other in storage. The `UniqueConstraint` on
+    `Image.source_image` is the backoff. No broker calls are made — the
+    resulting `OutboxMessage` is published later by the `dispatch_outbox` reaper.
+    """
+    if not uploads:
+        raise NoFilesUploaded("No files selected.")
+
+    invalid = [name for file in uploads if (name := file.name) and not is_valid_image(file)]
+    if invalid:
+        raise UnsupportedImageType(
+            f"Unsupported or corrupt file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted.",
+        )
+
+    # FIXME: enforce file count / total size limits at upload.
+    batch = Batch.objects.create()
+    images: list[Image] = []
+    for file in uploads:
+        name = file.name or "upload"
+        path = pathlib.Path(name)
+        file.name = f"{path.stem}_{time.time_ns()}{path.suffix}"
+        images.append(Image(batch=batch, source_image=file))
+    Image.objects.bulk_create(images)  # FileField.pre_save writes each file to storage
+
+    OutboxMessage.objects.create(
+        task_name="id_dedup.workflow.tasks.process_batch",
+        payload={"batch_id": str(batch.pk), "user_id": user_id},
+    )
+    return batch
 
 
 @transaction.atomic

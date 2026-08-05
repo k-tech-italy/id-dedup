@@ -5,6 +5,7 @@ from . import views
 app_name = "workflow"
 
 urlpatterns = [
+    path("upload/", views.UploadView.as_view(), name="upload"),
     path("tickets/", views.ticket_list, name="ticket_list"),
     path("tickets/<uuid:pk>/", views.ticket_detail, name="ticket_detail"),
     path("tickets/<uuid:pk>/submit/", views.submit_review, name="submit_review"),

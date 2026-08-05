@@ -2,13 +2,34 @@ from typing import cast
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views import View
 from django.views.decorators.http import require_POST, require_safe
 
+from id_dedup.images import UnsupportedImageType
 from id_dedup.typing.request import AuthenticatedHttpRequest
 from id_dedup.workflow import service
 from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet, TicketAlreadyClosed
+
+
+class UploadView(LoginRequiredMixin, View):
+    """Render the upload form (GET) and register uploads for async processing (POST)."""
+
+    def get(self, request: AuthenticatedHttpRequest) -> HttpResponse:
+        """Render the upload form."""
+        return render(request, "workflow/upload.html")
+
+    def post(self, request: AuthenticatedHttpRequest) -> HttpResponse:
+        """Register uploaded images for async processing."""
+        files = request.FILES.getlist("images")
+        try:
+            service.register_upload(files, user_id=request.user.pk)
+        except (UnsupportedImageType, service.NoFilesUploaded) as exc:
+            return render(request, "workflow/upload.html", {"error": str(exc)})
+        messages.success(request, "Upload received — clustering will start shortly.")
+        return redirect("home")
 
 
 @require_safe
