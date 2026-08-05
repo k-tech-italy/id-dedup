@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-import uuid
-from typing import TYPE_CHECKING
+import pathlib
+from typing import TYPE_CHECKING, cast
 
-from django.core.files import File
 from django.db import transaction
 
-from .models import Batch, ClusterReviewTicket, Conversation, Image, OutboxMessage, TicketAlreadyClosed, Trigger
+from .models import (
+    Batch,
+    ClusterReviewTicket,
+    Conversation,
+    ConversationQuerySet,
+    Image,
+    OutboxMessage,
+    TicketAlreadyClosed,
+    Trigger,
+)
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
@@ -20,28 +28,28 @@ def create_tickets_from_result(
     batch: Batch,
 ) -> list[ClusterReviewTicket]:
     """
-    Create one ClusterReviewTicket per group cluster and persist images to the DB.
+    Create one ClusterReviewTicket per group cluster, linking the batch's registered images.
 
-    Only DBSCAN groups (label >= 0) produce tickets. Singletons (label -1) bypass
-    the review step entirely and are handled
-    downstream. Images whose temp file no longer exists are skipped; their ticket
-    is still created.
+    Images are matched by source_image.path. Singletons (label -1) produce no
+    tickets. Members whose path doesn't match a registered image are skipped;
+    the ticket is still created.
     """
+    by_path = {
+        pathlib.Path(image.source_image.path): image
+        for image in Image.objects.select_for_update().filter(batch=batch).order_by("pk")
+    }
     tickets: list[ClusterReviewTicket] = []
 
     for label in result.groups:
-        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=label)
+        ticket = ClusterReviewTicket.new(batch, label)
+        to_update: list[Image] = []
         for member in result.groups[label]:
-            if not member.file.exists():
+            image = by_path.get(member.file)
+            if image is None:
                 continue
-            ext = "".join(member.file.suffixes)
-            with member.file.open("rb") as f:
-                Image.objects.create(
-                    batch=batch,
-                    cluster_ticket=ticket,
-                    embedding=member.embedding,
-                    source_image=File(f, name=f"{uuid.uuid4()}{ext}"),
-                )
+            image.assign_to_cluster(ticket, member.embedding.tolist(), save=False)
+            to_update.append(image)
+        Image.objects.bulk_update(to_update, ["cluster_ticket", "embedding", "updated_at"])
         tickets.append(ticket)
 
     return tickets
@@ -116,11 +124,11 @@ def submit_ticket_review(
             seen.add(pk)
             normalized.append(pk)
 
-    parent = Conversation.objects.upload_for_batch(ticket.batch_id).first()
+    parent = cast("ConversationQuerySet", Conversation.objects).upload_for_batch(ticket.batch).first()
     conversation = Conversation.create_for_cluster_review(
-        ticket=ticket,
+        ticket,
+        normalized,
         user=user,
-        kept_ids=normalized,
         parent=parent,
     )
 

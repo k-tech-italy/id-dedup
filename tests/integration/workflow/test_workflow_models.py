@@ -7,6 +7,8 @@ from django.core.files import File
 from django.db import IntegrityError
 
 from id_dedup.workflow.models import (
+    Batch,
+    ClusterReviewTicket,
     Conversation,
     ConversationQuerySet,
     Identity,
@@ -106,6 +108,53 @@ class TestIndexNames:
 
     def test_identity_hnsw_index_renamed(self):
         assert [idx.name for idx in Identity._meta.indexes] == ["workflow_identity_centroid_idx"]
+
+
+@pytest.mark.django_db
+class TestClusterReviewTicketNew:
+    def test_new_persists_ticket(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.new(batch, 3)
+
+        assert ticket.pk is not None
+        assert ticket.batch == batch
+        assert ClusterReviewTicket.objects.get(pk=ticket.pk).cluster_label == 3
+
+    def test_new_accepts_positional_args(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.new(batch, 7)
+
+        assert ClusterReviewTicket.objects.get(pk=ticket.pk).cluster_label == 7
+
+
+@pytest.mark.django_db
+class TestImageAssignToCluster:
+    def test_persists_by_default(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+        embedding = [0.1] * 512
+
+        img.assign_to_cluster(ticket, embedding)
+
+        stored = Image.objects.get(pk=img.pk)
+        assert stored.cluster_ticket == ticket
+        assert list(stored.embedding) == embedding
+
+    def test_save_false_leaves_unpersisted(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+        embedding = [0.1] * 512
+
+        img.assign_to_cluster(ticket, embedding, save=False)
+
+        assert img.cluster_ticket == ticket
+        assert list(img.embedding) == embedding
+        assert img.updated_at is not None
+        stored = Image.objects.get(pk=img.pk)
+        assert stored.cluster_ticket is None
+        assert stored.embedding is None
 
 
 @pytest.mark.django_db

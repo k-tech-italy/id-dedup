@@ -1,9 +1,14 @@
 import pathlib
+from datetime import timedelta
 
 import numpy as np
 import pytest
+from django.core.files import File
+from django.utils import timezone
 
 from id_dedup.ml.pipeline import ClusterMember, ClusterResult
+from id_dedup.workflow.models import Batch, ClusterReviewTicket, Image
+from id_dedup.workflow.service import create_tickets_from_result
 
 
 def _unit_vector(seed: int) -> np.ndarray:
@@ -12,139 +17,135 @@ def _unit_vector(seed: int) -> np.ndarray:
     return v / np.linalg.norm(v)
 
 
-def _make_image_file(tmp_path: pathlib.Path, name: str) -> pathlib.Path:
-    p = tmp_path / name
-    p.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
-    return p
+def _register_image(batch: Batch, tmp_path: pathlib.Path, name: str) -> Image:
+    path = tmp_path / name
+    path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
+    with path.open("rb") as f:
+        return Image.objects.create(batch=batch, source_image=File(f, name=name))
+
+
+def _member_for(image: Image, seed: int) -> ClusterMember:
+    return ClusterMember(file=pathlib.Path(image.source_image.path), embedding=_unit_vector(seed))
 
 
 @pytest.mark.django_db
 class TestCreateTicketsFromResult:
     def test_two_groups_yields_two_tickets(self, tmp_path):
-        from id_dedup.workflow.models import Batch, ClusterReviewTicket
-        from id_dedup.workflow.service import create_tickets_from_result
+        batch = Batch.objects.create()
+        g0a = _register_image(batch, tmp_path, "g0a.jpg")
+        g0b = _register_image(batch, tmp_path, "g0b.jpg")
+        g1a = _register_image(batch, tmp_path, "g1a.jpg")
 
         result = ClusterResult()
-        result.clusters[0] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g0a.jpg"), embedding=_unit_vector(10)),
-            ClusterMember(file=_make_image_file(tmp_path, "g0b.jpg"), embedding=_unit_vector(11)),
-        ]
-        result.clusters[1] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g1a.jpg"), embedding=_unit_vector(20)),
-        ]
-        result.clusters[-1] = [
-            ClusterMember(file=_make_image_file(tmp_path, "s0.jpg"), embedding=_unit_vector(30)),
-            ClusterMember(file=_make_image_file(tmp_path, "s1.jpg"), embedding=_unit_vector(31)),
-        ]
+        result.clusters[0] = [_member_for(g0a, 10), _member_for(g0b, 11)]
+        result.clusters[1] = [_member_for(g1a, 20)]
 
-        batch = Batch.objects.create()
         tickets = create_tickets_from_result(result, batch)
 
         assert len(tickets) == 2
         assert ClusterReviewTicket.objects.filter(batch=batch).count() == 2
+        assert {t.cluster_label for t in tickets} == {0, 1}
 
-    def test_singletons_produce_no_tickets(self, tmp_path):
-        from id_dedup.workflow.models import Batch, ClusterReviewTicket
-        from id_dedup.workflow.service import create_tickets_from_result
+    def test_links_registered_images_no_new_rows(self, tmp_path):
+        batch = Batch.objects.create()
+        g0a = _register_image(batch, tmp_path, "g0a.jpg")
+        g0b = _register_image(batch, tmp_path, "g0b.jpg")
 
         result = ClusterResult()
-        result.clusters[-1] = [
-            ClusterMember(file=_make_image_file(tmp_path, "s0.jpg"), embedding=_unit_vector(30)),
-            ClusterMember(file=_make_image_file(tmp_path, "s1.jpg"), embedding=_unit_vector(31)),
-        ]
+        result.clusters[0] = [_member_for(g0a, 10), _member_for(g0b, 11)]
 
+        tickets = create_tickets_from_result(result, batch)
+
+        assert Image.objects.count() == 2
+        assert Image.objects.filter(cluster_ticket=tickets[0]).count() == 2
+
+    def test_embeddings_stored(self, tmp_path):
         batch = Batch.objects.create()
+        img = _register_image(batch, tmp_path, "g0a.jpg")
+        member = _member_for(img, 10)
+
+        result = ClusterResult()
+        result.clusters[0] = [member]
+
+        create_tickets_from_result(result, batch)
+
+        img.refresh_from_db()
+        assert np.allclose(np.asarray(img.embedding), member.embedding)
+
+    def test_updated_at_bumped(self, tmp_path):
+        batch = Batch.objects.create()
+        img = _register_image(batch, tmp_path, "g0a.jpg")
+        Image.objects.filter(pk=img.pk).update(updated_at=timezone.now() - timedelta(days=1))
+        stale = Image.objects.get(pk=img.pk).updated_at
+
+        result = ClusterResult()
+        result.clusters[0] = [_member_for(img, 10)]
+
+        create_tickets_from_result(result, batch)
+
+        img.refresh_from_db()
+        assert img.updated_at > stale
+
+    def test_singletons_produce_no_tickets_and_untouched(self, tmp_path):
+        batch = Batch.objects.create()
+        s0 = _register_image(batch, tmp_path, "s0.jpg")
+        s1 = _register_image(batch, tmp_path, "s1.jpg")
+
+        result = ClusterResult()
+        result.clusters[-1] = [_member_for(s0, 30), _member_for(s1, 31)]
+
         tickets = create_tickets_from_result(result, batch)
 
         assert tickets == []
-        assert ClusterReviewTicket.objects.filter(batch=batch).count() == 0
+        assert ClusterReviewTicket.objects.count() == 0
+        for img in (s0, s1):
+            img.refresh_from_db()
+            assert img.cluster_ticket is None
+            assert img.embedding is None
 
-    def test_group_ticket_has_correct_cluster_label(self, tmp_path):
-        from id_dedup.workflow.models import Batch
-        from id_dedup.workflow.service import create_tickets_from_result
+    def test_ungrouped_registered_image_untouched(self, tmp_path):
+        batch = Batch.objects.create()
+        g0a = _register_image(batch, tmp_path, "g0a.jpg")
+        lone = _register_image(batch, tmp_path, "lone.jpg")
 
         result = ClusterResult()
-        result.clusters[0] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g0a.jpg"), embedding=_unit_vector(10)),
-        ]
+        result.clusters[0] = [_member_for(g0a, 10)]
 
-        batch = Batch.objects.create()
-        tickets = create_tickets_from_result(result, batch)
-
-        assert tickets[0].cluster_label == 0
-
-    def test_images_created_for_group_members_only(self, tmp_path):
-        from id_dedup.workflow.models import Batch, Image
-        from id_dedup.workflow.service import create_tickets_from_result
-
-        result = ClusterResult()
-        result.clusters[0] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g0a.jpg"), embedding=_unit_vector(10)),
-            ClusterMember(file=_make_image_file(tmp_path, "g0b.jpg"), embedding=_unit_vector(11)),
-        ]
-        result.clusters[-1] = [
-            ClusterMember(file=_make_image_file(tmp_path, "s0.jpg"), embedding=_unit_vector(30)),
-        ]
-
-        batch = Batch.objects.create()
         create_tickets_from_result(result, batch)
 
-        assert Image.objects.filter(batch=batch).count() == 2
+        lone.refresh_from_db()
+        assert lone.cluster_ticket is None
+        assert lone.embedding is None
 
-    def test_images_linked_to_their_ticket(self, tmp_path):
-        from id_dedup.workflow.models import Batch, Image
-        from id_dedup.workflow.service import create_tickets_from_result
+    def test_unregistered_path_ticket_still_created(self, tmp_path):
+        batch = Batch.objects.create()
+        ghost = tmp_path / "ghost.jpg"  # no matching Image row
 
         result = ClusterResult()
-        result.clusters[0] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g0a.jpg"), embedding=_unit_vector(10)),
-            ClusterMember(file=_make_image_file(tmp_path, "g0b.jpg"), embedding=_unit_vector(11)),
-        ]
+        result.clusters[0] = [ClusterMember(file=ghost, embedding=_unit_vector(99))]
 
-        batch = Batch.objects.create()
         tickets = create_tickets_from_result(result, batch)
 
-        assert Image.objects.filter(cluster_ticket=tickets[0]).count() == 2
+        assert len(tickets) == 1
+        assert Image.objects.filter(cluster_ticket=tickets[0]).count() == 0
 
     def test_empty_result_yields_no_tickets(self):
-        from id_dedup.workflow.models import Batch, ClusterReviewTicket
-        from id_dedup.workflow.service import create_tickets_from_result
-
         batch = Batch.objects.create()
+
         tickets = create_tickets_from_result(ClusterResult(), batch)
 
         assert tickets == []
-        assert ClusterReviewTicket.objects.filter(batch=batch).count() == 0
+        assert ClusterReviewTicket.objects.count() == 0
 
     def test_tickets_scoped_to_given_batch(self, tmp_path):
-        from id_dedup.workflow.models import Batch, ClusterReviewTicket
-        from id_dedup.workflow.service import create_tickets_from_result
+        batch_a = Batch.objects.create()
+        img = _register_image(batch_a, tmp_path, "g0a.jpg")
+        batch_b = Batch.objects.create()
 
         result = ClusterResult()
-        result.clusters[0] = [
-            ClusterMember(file=_make_image_file(tmp_path, "g0a.jpg"), embedding=_unit_vector(10)),
-        ]
+        result.clusters[0] = [_member_for(img, 10)]
 
-        batch_a = Batch.objects.create()
-        batch_b = Batch.objects.create()
         create_tickets_from_result(result, batch_a)
 
         assert ClusterReviewTicket.objects.filter(batch=batch_a).count() == 1
         assert ClusterReviewTicket.objects.filter(batch=batch_b).count() == 0
-
-    def test_ticket_created_even_when_image_file_missing(self, tmp_path):
-        from id_dedup.workflow.models import Batch, ClusterReviewTicket, Image
-        from id_dedup.workflow.service import create_tickets_from_result
-
-        ghost = tmp_path / "ghost.jpg"  # intentionally not created on disk
-        result = ClusterResult()
-        result.clusters[0] = [
-            ClusterMember(file=ghost, embedding=_unit_vector(99)),
-        ]
-
-        batch = Batch.objects.create()
-        tickets = create_tickets_from_result(result, batch)
-
-        assert len(tickets) == 1
-        assert ClusterReviewTicket.objects.filter(batch=batch).count() == 1
-        assert Image.objects.filter(batch=batch).count() == 0
