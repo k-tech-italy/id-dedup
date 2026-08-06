@@ -120,7 +120,10 @@ def get_kept_image_ids(ticket: ClusterReviewTicket) -> set[str]:
 
 
 @transaction.atomic
-def close_if_drained(conversation: Conversation, drained_ids: list[str] | None = None) -> bool:
+def close_conversation_if_drained(
+    conversation: Conversation,
+    drained_ids: list[str] | None = None,
+) -> bool:
     """
     Remove drained image IDs from the pending set and close if empty.
 
@@ -189,5 +192,5 @@ def submit_ticket_review(
             },
         )
 
-    close_if_drained(conversation)
+    close_conversation_if_drained(conversation)
     return normalized
