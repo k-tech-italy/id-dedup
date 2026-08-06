@@ -59,6 +59,9 @@ class Batch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    if TYPE_CHECKING:
+        images: models.Manager[Image]
+
     @override
     def __str__(self) -> str:
         return str(self.id)
@@ -93,6 +96,10 @@ class Trigger(models.TextChoices):
     UPLOAD = "upload"
     CLUSTER_REVIEW = "cluster review"
     ADJUDICATION = "adjudication"
+
+
+class NothingToResume(Exception):
+    """Attempted to resume a conversation that has no error to clear."""
 
 
 class Conversation(models.Model):
@@ -159,6 +166,7 @@ class Conversation(models.Model):
         for CLUSTER_REVIEW conversations). This method is idempotent: IDs not
         present in the set are silently ignored.
         """
+        # TODO: define a summary schema as a typed dict
         pending = set(self.summary.get("pending_image_ids", [])) - set(drained_ids)
         self.summary["pending_image_ids"] = list(pending)
         self.save(update_fields=["summary"])
@@ -188,6 +196,36 @@ class Conversation(models.Model):
         if updated:
             self.refresh_from_db()
         return updated == 1
+
+    def resume(self) -> None:
+        """
+        Clear a previous failure's error/ended state so a retry can re-run.
+
+        Raises :class:`NothingToResume` when the conversation has no error.
+        """
+        if not self.error_message:
+            raise NothingToResume(f"Conversation {self.pk} has no error to clear")
+        self.error_message = ""
+        self.ended_at = None
+        self.save(update_fields=["error_message", "ended_at"])
+
+    def fail(self, message: str) -> None:
+        """Record a failed attempt."""
+        self.error_message = message
+        self.ended_at = timezone.now()
+        self.save(update_fields=["error_message", "ended_at"])
+
+    def mark_clustered(self, summary: dict) -> None:
+        """
+        Record the clustering outcome.
+
+        Marks clustering as done in the summary.
+
+        The conversation stays **pending** until its own image set is
+        drained.
+        """
+        self.summary = summary | {"clustering_done": True}
+        self.save(update_fields=["summary"])
 
 
 class Identity(models.Model):
