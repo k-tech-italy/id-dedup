@@ -199,3 +199,10 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+CELERY_BEAT_SCHEDULE = {
+    "dispatch-outbox": {
+        "task": "id_dedup.workflow.tasks.dispatch_outbox",
+        "schedule": 10.0,
+    },
+}
