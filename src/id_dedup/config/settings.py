@@ -179,6 +179,8 @@ LOGOUT_REDIRECT_URL = "/"
 # Workflow outbox
 # Max attempts before an undeliverable OutboxMessage is dead-lettered.
 OUTBOX_MAX_ATTEMPTS = int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5"))
+# Seconds between outbox sweeps (Celery beat schedule for dispatch_outbox).
+OUTBOX_SWEEP_SECONDS = float(os.environ.get("OUTBOX_SWEEP_SECONDS", "10.0"))
 
 # Cache (used by Celery for result passing)
 CACHES = {
@@ -203,6 +205,6 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_BEAT_SCHEDULE = {
     "dispatch-outbox": {
         "task": "id_dedup.workflow.tasks.dispatch_outbox",
-        "schedule": 10.0,
+        "schedule": OUTBOX_SWEEP_SECONDS,
     },
 }
