@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import numpy as np
-from celery import shared_task
+from celery import Celery, current_app, shared_task
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from id_dedup.ml.pipeline import ClusterMember, ClusterResult, cluster_dbscan, extract_embedding
 from id_dedup.workflow.models import Batch, Conversation, Image, NothingToResume, OutboxMessage, Trigger
 from id_dedup.workflow.service import close_conversation_if_drained, create_tickets_from_result
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -189,3 +194,75 @@ def auto_adjudicate_set(
     conversation's pending set, so a stub drain would end it at dispatch time.
     The drain call arrives with that feature.
     """
+
+
+@shared_task
+def dispatch_outbox(limit: int = 50) -> int:
+    """
+    Publish pending OutboxMessage rows to the broker; return how many were dispatched.
+
+    Each row is claimed in its own short transaction (`select_for_update`
+    with `skip_locked`) so concurrent sweeps never double-claim and a slow
+    broker never holds a multi-row lock. `dispatched_at` is set **after** a
+    successful `send_task` (at-least-once: a crash in between leaves the row
+    pending and it is re-sent, which every task tolerates via idempotency
+    guards). A row whose `send_task` keeps failing is retried **once per
+    sweep** (every ~10 s via beat) until `attempts >= max_attempts`, then
+    dead-lettered and never swept again — a broker outage burns one attempt
+    per sweep instead of exhausting the cap in a single run. Scheduled by
+    Celery beat every 10 s; also runnable via the `dispatch_outbox`
+    management command for manual/CI recovery.
+    """
+    dispatched = 0
+    attempted: set[str] = set()
+    for _ in range(limit):
+        result = _dispatch_next(attempted)
+        if result is None:
+            break
+        row_id, was_dispatched = result
+        attempted.add(row_id)
+        dispatched += was_dispatched
+    return dispatched
+
+
+def _dispatch_next(attempted: set[str]) -> tuple[str, bool] | None:
+    """
+    Claim and deliver the next pending row in one transaction; None when empty.
+
+    Returns ``(pk, dispatched)`` — the pk is added to *attempted* so the
+    sweep never retries the same row within one run (one attempt per sweep).
+    """
+    with transaction.atomic():
+        row = (
+            OutboxMessage.objects.filter(
+                dispatched_at__isnull=True,
+                dead_lettered_at__isnull=True,
+                attempts__lt=F("max_attempts"),
+            )
+            .exclude(pk__in=attempted)
+            .select_for_update(skip_locked=True)
+            .order_by("created_at")
+            .first()
+        )
+        if row is None:
+            return None
+        try:
+            cast("Celery", current_app).send_task(row.task_name, kwargs=row.payload)
+        except Exception as exc:  # noqa: BLE001 - record per-row, keep sweeping
+            row.attempts += 1
+            row.last_error = str(exc)
+            if row.attempts >= row.max_attempts:
+                row.dead_lettered_at = timezone.now()
+                logger.error(
+                    "Outbox %s dead-lettered after %d/%d attempts (%s): %s",
+                    row.pk,
+                    row.attempts,
+                    row.max_attempts,
+                    row.task_name,
+                    exc,
+                )
+            row.save(update_fields=["attempts", "last_error", "dead_lettered_at"])
+            return str(row.pk), False
+        row.dispatched_at = timezone.now()  # mark AFTER send → at-least-once
+        row.save(update_fields=["dispatched_at"])
+        return str(row.pk), True

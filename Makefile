@@ -86,3 +86,6 @@ build:  ## Builds the package
 
 worker: guard-REDIS_URL ## Run Celery worker (requires REDIS_URL in env)
 	celery -A id_dedup worker --loglevel=info
+
+beat: guard-REDIS_URL ## Run Celery beat scheduler (requires REDIS_URL in env)
+	celery -A id_dedup beat --loglevel=info
