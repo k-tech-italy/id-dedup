@@ -3,6 +3,7 @@ from typing import cast
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
@@ -42,15 +43,31 @@ class UploadView(LoginRequiredMixin, View):
 def ticket_list(request: HttpRequest) -> HttpResponse:
     """Render the ticket list page filtered by open/closed status."""
     status = request.GET.get("status", "open")
-    if status not in {"open", "closed"}:
+    page = request.GET.get("page", "1")
+    page_size = request.GET.get("page_size", "10")
+    if status not in {"open", "closed", "all"}:
         status = "open"
+    if page_size not in {"10", "20"}:
+        page_size = "10"
 
     tickets = cast(
         "ClusterReviewTicketQuerySet",
         ClusterReviewTicket.objects.select_related("batch").order_by("-created_at"),
     )
-    tickets = tickets.closed() if status == "closed" else tickets.open()
-    return render(request, "workflow/ticket_list.html", {"tickets": tickets, "status": status})
+    if status == "closed":
+        tickets = tickets.closed()
+    elif status == "open":
+        tickets = tickets.open()
+    else:
+        tickets = tickets.all()
+
+    paginator = Paginator(tickets, page_size)
+    page_obj = paginator.get_page(page)
+    return render(
+        request,
+        "workflow/ticket_list.html",
+        {"tickets": page_obj, "page_obj": page_obj, "status": status, "page_size": page_size},
+    )
 
 
 @require_safe

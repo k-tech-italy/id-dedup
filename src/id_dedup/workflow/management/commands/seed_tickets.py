@@ -9,12 +9,12 @@ from id_dedup.workflow.models import Batch, ClusterReviewTicket, ClusterReviewTi
 
 
 class Command(BaseCommand):
-    help = "Seed the database with 5 open cluster review tickets for manual testing."
+    help = "Seed the database with 20 open cluster review tickets for manual testing."
 
     def handle(self, *args, **options):
         batch, _ = Batch.objects.get_or_create(id=uuid.UUID("00000000-0000-0000-0000-000000000001"))
 
-        for label in range(5):
+        for label in range(20):
             ticket, created = ClusterReviewTicket.objects.get_or_create(
                 batch=batch,
                 cluster_label=label,
