@@ -53,13 +53,14 @@ def register_upload(
         )
 
     # FIXME: enforce file count / total size limits at upload.
-    batch = Batch.objects.create()
+    batch = Batch.new()
     images: list[Image] = []
     for file in uploads:
         name = file.name or "upload"
         path = pathlib.Path(name)
         file.name = f"{path.stem}_{time.time_ns()}{path.suffix}"
         images.append(Image(batch=batch, source_image=file))
+    # FIXME: bulk_create() does not call the pre_save() signal
     Image.objects.bulk_create(images)  # FileField.pre_save writes each file to storage
 
     OutboxMessage.objects.create(
@@ -127,10 +128,6 @@ def close_conversation_if_drained(
     """
     Remove drained image IDs from the pending set and close if empty.
 
-    Business-logic orchestration over three model primitives:
-    ``Conversation.remove_from_pending``, ``Conversation.is_drained``,
-    and ``Conversation.close``.
-
     Returns whether this call closed the conversation.
     """
     if drained_ids:
@@ -183,8 +180,8 @@ def submit_ticket_review(
     )
 
     if normalized:
-        OutboxMessage.objects.create(
-            task_name="id_dedup.workflow.tasks.auto_adjudicate_set",
+        OutboxMessage.new(
+            task="id_dedup.workflow.tasks.auto_adjudicate_set",
             payload={
                 "image_ids": normalized,
                 "conversation_id": str(conversation.pk),

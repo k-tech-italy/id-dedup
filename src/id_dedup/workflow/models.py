@@ -22,8 +22,23 @@ def _default_max_attempts() -> int:
     return getattr(settings, "OUTBOX_MAX_ATTEMPTS", 5)
 
 
+class OutboxMessageQuerySet(models.QuerySet["OutboxMessage"]):
+    """Queryset providing convenience methods for `OutboxMessage`."""
+
+    def dispatchable(self) -> Self:
+        """Return the `OutboxMessage`s that are ready to dispatch."""
+        return self.filter(
+            dispatched_at__isnull=True,
+            dead_lettered_at__isnull=True,
+            attempts__lt=models.F("max_attempts"),
+        )
+
+
+OutboxMessageManager = models.Manager.from_queryset(OutboxMessageQuerySet)
+
+
 class OutboxMessage(models.Model):
-    """Durable record of a Celery dispatch that must not be lost."""
+    """Durable record of an async task dispatch that must not be lost."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     task_name = models.CharField(max_length=128)
@@ -34,6 +49,8 @@ class OutboxMessage(models.Model):
     last_error = models.TextField(blank=True, default="")
     max_attempts = models.PositiveIntegerField(default=_default_max_attempts)
     dead_lettered_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OutboxMessageManager()
 
     class Meta:
         """Index serving the sweep; a cap-less row is rejected by the check constraint."""
@@ -52,6 +69,11 @@ class OutboxMessage(models.Model):
     def __str__(self) -> str:
         return str(self.id)
 
+    @staticmethod
+    def new(task: str, payload: dict[str, Any]) -> OutboxMessage:
+        """Create and return a new outbox message."""
+        return OutboxMessage.objects.create(task_name=task, payload=payload)
+
 
 class Batch(models.Model):
     """A grouping of image uploads."""
@@ -65,6 +87,15 @@ class Batch(models.Model):
     @override
     def __str__(self) -> str:
         return str(self.id)
+
+    @staticmethod
+    def new() -> Batch:
+        """
+        Create and return a new batch.
+
+        Factory method.
+        """
+        return Batch.objects.create()
 
 
 class ConversationQuerySet(models.QuerySet):
@@ -127,6 +158,20 @@ class Conversation(models.Model):
     @override
     def __str__(self) -> str:
         return str(self.id)
+
+    @staticmethod
+    def get_or_create_for_upload(
+        batch: Batch,
+        user: User | None = None,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> tuple[Conversation, bool]:
+        """Retrieve a `Conversation` triggered by an upload, or create and return one if not found."""
+        batch_id = batch.pk
+        return Conversation.objects.get_or_create(
+            trigger=Trigger.UPLOAD,
+            summary__batch_id=str(batch_id),
+            defaults={"user": user, "summary": {"batch_id": str(batch_id)}},
+        )
 
     @staticmethod
     def create_for_cluster_review(

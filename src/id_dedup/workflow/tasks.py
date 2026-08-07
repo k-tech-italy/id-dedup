@@ -10,14 +10,24 @@ import numpy as np
 from celery import Celery, current_app, shared_task
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import F
 from django.utils import timezone
 
 from id_dedup.ml.pipeline import ClusterMember, ClusterResult, cluster_dbscan, extract_embedding
-from id_dedup.workflow.models import Batch, Conversation, Image, NothingToResume, OutboxMessage, Trigger
+from id_dedup.workflow.models import (
+    Batch,
+    Conversation,
+    Image,
+    NothingToResume,
+    OutboxMessage,
+    OutboxMessageQuerySet,
+)
 from id_dedup.workflow.service import close_conversation_if_drained, create_tickets_from_result
 
 logger = logging.getLogger(__name__)
+
+
+class AlreadyClustered(Exception):
+    """Clustering already happened during this conversation."""
 
 
 @dataclass
@@ -50,43 +60,40 @@ def process_batch(batch_id: str, user_id: int | None = None) -> None:
     the original error always propagates — losing the failure record to a
     second exception is the accepted tradeoff.
     """
-    conversation: Conversation | None = None
     try:
         batch, conversation = _acquire_conversation(batch_id, user_id)
-        if batch is None or conversation is None:
+        if conversation is None:
             return
         work = _run_clustering(batch)
         _commit_clustering(batch, conversation, work, user_id)
+    except (Batch.DoesNotExist, AlreadyClustered):
+        return
     except Exception as exc:
         if conversation is not None:
-            with contextlib.suppress(Exception):  # noqa: BLE001 - best-effort: never mask the original error
+            # best-effort: never mask the original error
+            with contextlib.suppress(Exception):  # noqa: BLE001
                 conversation.fail(str(exc))
         raise
 
 
+@transaction.atomic
 def _acquire_conversation(
     batch_id: str,
     user_id: int | None,
-) -> tuple[Batch | None, Conversation | None]:
+) -> tuple[Batch, Conversation]:
     """Step 1: lock the batch row, get-or-create the UPLOAD conversation, resume if errored."""
-    with transaction.atomic():
-        batch = Batch.objects.select_for_update().filter(pk=batch_id).first()
-        if batch is None:
-            return None, None
-        user = User.objects.filter(pk=user_id).first() if user_id else None
-        conversation, created = Conversation.objects.get_or_create(
-            trigger=Trigger.UPLOAD,
-            summary__batch_id=str(batch_id),
-            defaults={"user": user, "summary": {"batch_id": str(batch_id)}},
-        )
-        if conversation.summary.get("clustering_done"):
-            return None, None  # already clustered (idempotent redelivery, incl. zero-ticket batches)
-        if not created:
-            # NOTE: `NothingToResume` is an expected signal, not a failure
-            with contextlib.suppress(NothingToResume):
-                # clear error fields if a previous run failed
-                conversation.resume()
-        return batch, conversation
+    batch = Batch.objects.select_for_update().filter(pk=batch_id).get()
+    user = User.objects.get(pk=user_id) if user_id else None
+    conversation, created = Conversation.get_or_create_for_upload(batch, user)
+    if conversation.summary.get("clustering_done"):
+        # idempotent redelivery, incl. zero-ticket batches
+        raise AlreadyClustered()
+    if not created:
+        # NOTE: `NothingToResume` is an expected signal, not a failure
+        with contextlib.suppress(NothingToResume):
+            # clear error fields if a previous run failed
+            conversation.resume()
+    return batch, conversation
 
 
 def _run_clustering(batch: Batch) -> ClusteringWork:
@@ -225,44 +232,41 @@ def dispatch_outbox(limit: int = 50) -> int:
     return dispatched
 
 
+@transaction.atomic
 def _dispatch_next(attempted: set[str]) -> tuple[str, bool] | None:
     """
-    Claim and deliver the next pending row in one transaction; None when empty.
+    Claim and deliver the next pending `OutboxMessage` in one transaction.
 
-    Returns ``(pk, dispatched)`` — the pk is added to *attempted* so the
-    sweep never retries the same row within one run (one attempt per sweep).
+    Returns a tuple with the id of the message and a `bool` showing
+    whether the message was dispatched successfully.
     """
-    with transaction.atomic():
-        row = (
-            OutboxMessage.objects.filter(
-                dispatched_at__isnull=True,
-                dead_lettered_at__isnull=True,
-                attempts__lt=F("max_attempts"),
+    row = (
+        cast("OutboxMessageQuerySet", OutboxMessage.objects)
+        .dispatchable()
+        .exclude(pk__in=attempted)
+        .select_for_update(skip_locked=True)
+        .order_by("created_at")
+        .first()
+    )
+    if row is None:
+        return None
+    try:
+        cast("Celery", current_app).send_task(row.task_name, kwargs=row.payload)
+    except Exception as exc:  # noqa: BLE001 - record per-row, keep sweeping
+        row.attempts += 1
+        row.last_error = str(exc)
+        if row.attempts >= row.max_attempts:
+            row.dead_lettered_at = timezone.now()
+            logger.error(
+                "Outbox %s dead-lettered after %d/%d attempts (%s): %s",
+                row.pk,
+                row.attempts,
+                row.max_attempts,
+                row.task_name,
+                exc,
             )
-            .exclude(pk__in=attempted)
-            .select_for_update(skip_locked=True)
-            .order_by("created_at")
-            .first()
-        )
-        if row is None:
-            return None
-        try:
-            cast("Celery", current_app).send_task(row.task_name, kwargs=row.payload)
-        except Exception as exc:  # noqa: BLE001 - record per-row, keep sweeping
-            row.attempts += 1
-            row.last_error = str(exc)
-            if row.attempts >= row.max_attempts:
-                row.dead_lettered_at = timezone.now()
-                logger.error(
-                    "Outbox %s dead-lettered after %d/%d attempts (%s): %s",
-                    row.pk,
-                    row.attempts,
-                    row.max_attempts,
-                    row.task_name,
-                    exc,
-                )
-            row.save(update_fields=["attempts", "last_error", "dead_lettered_at"])
-            return str(row.pk), False
-        row.dispatched_at = timezone.now()  # mark AFTER send → at-least-once
-        row.save(update_fields=["dispatched_at"])
-        return str(row.pk), True
+        row.save(update_fields=["attempts", "last_error", "dead_lettered_at"])
+        return str(row.pk), False
+    row.dispatched_at = timezone.now()  # mark AFTER send → at-least-once
+    row.save(update_fields=["dispatched_at"])
+    return str(row.pk), True
