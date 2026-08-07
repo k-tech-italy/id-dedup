@@ -15,6 +15,10 @@
          class="px-3 py-1.5 rounded-lg {% if status == 'closed' %}bg-sky-600/20 text-sky-400{% else %}text-gray-500 hover:text-gray-300{% endif %}">
         Closed
       </a>
+      <a href="?status=all"
+         class="px-3 py-1.5 rounded-lg {% if status == 'all' %}bg-sky-600/20 text-sky-400{% else %}text-gray-500 hover:text-gray-300{% endif %}">
+        All
+      </a>
     </div>
   </div>
 
@@ -28,15 +32,17 @@
           <p class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">{{ ticket }}</p>
           <p class="text-xs text-gray-500 mt-0.5">Batch created {{ ticket.batch.created_at|date:"Y-m-d H:i" }}</p>
         </div>
-        <span class="text-xs px-3 py-1.5 rounded-full font-medium {% if ticket.closed_at %}bg-red-950 border border-red-700 text-red-400{% else %}bg-emerald-950 border border-emerald-700 text-emerald-400{% endif %}">
+        <span class="text-xs px-3 py-1.5 rounded-full font-medium {% if ticket.closed_at %}border border-red-700 text-red-400{% else %}bg-emerald-950 border border-emerald-700 text-emerald-400{% endif %}">
           {% if ticket.closed_at %}Closed{% else %}Open{% endif %}
         </span>
       </a>
     </li>
     {% endfor %}
   </ul>
+
+  {% include "workflow/_pagination.html" with page_obj=page_obj status=status page_size=page_size only %}
   {% else %}
-  <p class="text-gray-500 text-sm">No {{ status }} tickets.</p>
+  <p class="text-gray-500 text-sm">No tickets found.</p>
   {% endif %}
 </div>
 {% endblock %}

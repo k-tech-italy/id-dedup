@@ -1,0 +1,40 @@
+{# Pagination: page-size selector + pager. Expects: page_obj, status, page_size. #}
+<nav class="flex items-center justify-between pt-6" aria-label="Pagination">
+  {# page size selector — drops ?page so switching resets to page 1 #}
+  <div class="flex items-center gap-2 text-sm">
+    <span class="text-xs text-gray-500">Per page:</span>
+    <a href="?status={{ status }}&page_size=10"
+       class="px-3 py-1.5 rounded-lg {% if page_size == '10' %}bg-sky-600/20 text-sky-400{% else %}text-gray-500 hover:text-gray-300{% endif %}">
+      10
+    </a>
+    <a href="?status={{ status }}&page_size=20"
+       class="px-3 py-1.5 rounded-lg {% if page_size == '20' %}bg-sky-600/20 text-sky-400{% else %}text-gray-500 hover:text-gray-300{% endif %}">
+      20
+    </a>
+  </div>
+
+  {# pager #}
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="flex items-center gap-2 text-sm">
+    {% if page_obj.has_previous %}
+    <a href="?status={{ status }}&page_size={{ page_size }}&page={{ page_obj.previous_page_number }}"
+       class="px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-300">&larr; Prev</a>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if num == page_obj.number %}
+      <span class="px-3 py-1.5 rounded-lg bg-sky-600/20 text-sky-400 font-medium"
+            aria-current="page">{{ num }}</span>
+      {% else %}
+      <a href="?status={{ status }}&page_size={{ page_size }}&page={{ num }}"
+         class="px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-300">{{ num }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?status={{ status }}&page_size={{ page_size }}&page={{ page_obj.next_page_number }}"
+       class="px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-300">Next &rarr;</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</nav>

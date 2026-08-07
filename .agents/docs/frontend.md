@@ -10,7 +10,7 @@ HTMX 2 (partial HTML updates), Alpine.js 3 (local reactive state), SortableJS (d
 
 - `id_dedup/templates/` — `about.html` (anonymous landing), `dashboard.html` (authenticated home), `base.html`, `registration/login.html`.
 - `dedup/templates/wizard/` — the 4-step wizard templates.
-- `workflow/templates/workflow/` — `ticket_list.html`, `ticket_detail.html` (plain Django template renders; the detail page uses a checkbox form for kept images and a disabled form + closed badge once the ticket is closed).
+- `workflow/templates/workflow/` — `ticket_list.html`, `ticket_detail.html`, `_pagination.html` (plain Django template renders; the detail page uses a checkbox form for kept images and a disabled form + closed badge once the ticket is closed; the list page includes `_pagination.html` for page-size/pager controls).
 
 ## HTMX
 
