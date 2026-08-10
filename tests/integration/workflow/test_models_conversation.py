@@ -39,20 +39,20 @@ class TestConversationClose:
 
 
 @pytest.mark.django_db
-class TestConversationRemoveFromPending:
+class TestConversationDrainImages:
     def test_removes_ids(self):
         conv = Conversation.objects.create(trigger=Trigger.UPLOAD, summary={"pending_image_ids": ["a", "b"]})
-        conv.remove_from_pending(["a"])
+        conv.drain_images(["a"])
         conv.refresh_from_db()
         assert conv.summary["pending_image_ids"] == ["b"]
 
     def test_idempotent_for_unknown_ids(self):
         conv = Conversation.objects.create(trigger=Trigger.UPLOAD, summary={"pending_image_ids": ["a"]})
-        conv.remove_from_pending(["zzz"])
+        conv.drain_images(["zzz"])
         conv.refresh_from_db()
         assert conv.summary["pending_image_ids"] == ["a"]
 
     def test_does_not_close(self):
         conv = Conversation.objects.create(trigger=Trigger.UPLOAD, summary={"pending_image_ids": []})
-        conv.remove_from_pending([])
+        conv.drain_images([])
         assert conv.ended_at is None

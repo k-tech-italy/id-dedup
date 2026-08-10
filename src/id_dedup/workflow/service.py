@@ -309,7 +309,7 @@ def close_conversation_if_drained(
     Returns whether this call closed the conversation.
     """
     if drained_ids:
-        conversation.remove_from_pending(drained_ids)
+        conversation.drain_images(drained_ids)
     if conversation.is_drained():
         return conversation.close()
     return False

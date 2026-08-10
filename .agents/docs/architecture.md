@@ -91,7 +91,7 @@ Both `ClusterReviewTicket.close()` and `Conversation.close()` use the same patte
 
 The return value (`updated == 1`) lets callers distinguish "I closed it" from "it was already closed", enabling idempotent retry and early-out logic in the service layer.
 
-This pattern is safe inside or outside a transaction boundary. The `@transaction.atomic` on the service layer guarantees the surrounding operation (e.g. `remove_from_pending` + `is_drained` + `close`) commits as a unit, but does not prevent two separate callers from racing on `close()` itself.
+This pattern is safe inside or outside a transaction boundary. The `@transaction.atomic` on the service layer guarantees the surrounding operation (e.g. `drain_images` + `is_drained` + `close`) commits as a unit, but does not prevent two separate callers from racing on `close()` itself.
 
 ---
 
