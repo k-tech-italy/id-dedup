@@ -40,7 +40,7 @@
     {% endfor %}
   </ul>
 
-  {% include "workflow/_pagination.html" with page_obj=page_obj status=status page_size=page_size only %}
+  {% include "workflow/_pagination.html" with page_obj=page_obj page_range=page_range status=status page_size=page_size only %}
   {% else %}
   <p class="text-gray-500 text-sm">No tickets found.</p>
   {% endif %}

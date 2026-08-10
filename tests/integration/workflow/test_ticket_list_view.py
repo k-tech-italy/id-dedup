@@ -110,3 +110,16 @@ class TestTicketListView:
         self._create_tickets(15)
         response = logged_in_client.get(f"{self._url()}?page=abc")
         assert response.context["page_obj"].number == 1
+
+    def test_elided_page_range_for_middle_page(self, logged_in_client):
+        batch = Batch.objects.create()
+        ClusterReviewTicket.objects.bulk_create(
+            ClusterReviewTicket(batch=batch, cluster_label=i) for i in range(120)
+        )
+        response = logged_in_client.get(f"{self._url()}?page=6")
+        assert response.context["page_range"] == [1, "…", 5, 6, 7, "…", 12]
+
+    def test_no_elision_when_few_pages(self, logged_in_client):
+        self._create_tickets(15)
+        response = logged_in_client.get(self._url())
+        assert list(response.context["page_range"]) == [1, 2]
