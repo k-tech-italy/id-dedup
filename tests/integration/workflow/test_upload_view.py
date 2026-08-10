@@ -6,9 +6,8 @@ from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 
-from id_dedup.images import UnsupportedImageType
 from id_dedup.workflow.models import Batch, Image, OutboxMessage
-from id_dedup.workflow.service import NoFilesUploaded, register_upload
+from id_dedup.workflow.service import EmptyBatch, register_upload
 
 PROCESS_BATCH_TASK = "id_dedup.workflow.tasks.process_batch"
 
@@ -103,8 +102,7 @@ class TestUploadView:
         response = logged_in_client.post("/workflow/upload/", data={"images": [bad]})
 
         assert response.status_code == 200
-        assert b"notes.txt" in response.content
-        assert b"Only JPG, PNG, and WEBP" in response.content
+        assert b"None of the uploaded files were valid images." in response.content
         assert Batch.objects.count() == 0
 
     def test_post_pdf_file_shows_error(self, logged_in_client):
@@ -112,17 +110,32 @@ class TestUploadView:
         response = logged_in_client.post("/workflow/upload/", data={"images": [bad]})
 
         assert response.status_code == 200
-        assert b"doc.pdf" in response.content
+        assert b"None of the uploaded files were valid images." in response.content
         assert Batch.objects.count() == 0
 
-    def test_post_mixed_valid_and_invalid_rejects_all(self, logged_in_client):
+    def test_post_mixed_valid_and_invalid_keeps_valid(self, logged_in_client):
         good = _png("good.png")
         bad = SimpleUploadedFile("bad.txt", b"hello", content_type="text/plain")
         response = logged_in_client.post("/workflow/upload/", data={"images": [good, bad]})
 
-        assert response.status_code == 200
-        assert b"bad.txt" in response.content
-        assert Batch.objects.count() == 0
+        assert response.status_code == 302
+        assert Batch.objects.count() == 1
+        assert Image.objects.count() == 1
+        batch = Batch.objects.get()
+        assert batch.skipped_files == ["bad.txt"]
+        assert OutboxMessage.objects.count() == 1
+
+    def test_post_mixed_upload_warns_about_skipped(self, logged_in_client):
+        good = _png("good.png")
+        bad = SimpleUploadedFile("bad.txt", b"hello", content_type="text/plain")
+        response = logged_in_client.post(
+            "/workflow/upload/",
+            data={"images": [good, bad]},
+            follow=True,
+        )
+
+        assert b"Skipped 1 file" in response.content
+        assert b"Upload received" in response.content
 
     # ------------------------------------------------------------------
     # Constraints
@@ -139,12 +152,12 @@ class TestUploadView:
 class TestRegisterUploadService:
     """Service-layer tests for register_upload — no HTTP layer involved."""
 
-    def test_empty_upload_raises_no_files_uploaded(self):
-        with pytest.raises(NoFilesUploaded, match="No files selected."):
+    def test_empty_upload_raises_empty_batch(self):
+        with pytest.raises(EmptyBatch, match="No files selected."):
             register_upload([])
 
-    def test_none_upload_raises_no_files_uploaded(self):
-        with pytest.raises(NoFilesUploaded):
+    def test_none_upload_raises_empty_batch(self):
+        with pytest.raises(EmptyBatch):
             register_upload(None)
 
     def test_valid_upload_creates_batch_and_outbox(self):
@@ -166,9 +179,26 @@ class TestRegisterUploadService:
         assert outbox.payload["batch_id"] == str(batch.pk)
         assert outbox.payload["user_id"] == 42
 
-    def test_invalid_file_type_raises_unsupported_image_type(self):
+    def test_valid_upload_records_no_skipped_files(self):
+        upload = SimpleUploadedFile("img.png", _PNG_BYTES, content_type="image/png")
+        batch = register_upload([upload])
+
+        assert batch.skipped_files == []
+
+    def test_mixed_upload_registers_valid_and_records_skipped(self):
+        good = SimpleUploadedFile("good.png", _PNG_BYTES, content_type="image/png")
+        bad = SimpleUploadedFile("bad.txt", b"hello", content_type="text/plain")
+        batch = register_upload([good, bad])
+
+        assert Image.objects.filter(batch=batch).count() == 1
+        assert batch.skipped_files == ["bad.txt"]
+        outbox = OutboxMessage.objects.get()
+        assert outbox.task_name == PROCESS_BATCH_TASK
+        assert outbox.payload["batch_id"] == str(batch.pk)
+
+    def test_invalid_file_type_raises_empty_batch(self):
         bad = SimpleUploadedFile("notes.txt", b"not an image", content_type="text/plain")
-        with pytest.raises(UnsupportedImageType, match="notes.txt"):
+        with pytest.raises(EmptyBatch, match="None of the uploaded files were valid images."):
             register_upload([bad])
 
     def test_duplicate_filenames_uniquified(self, settings):
@@ -186,6 +216,6 @@ class TestRegisterUploadService:
 
     def test_no_outbox_on_validation_error(self):
         bad = SimpleUploadedFile("bad.txt", b"nope", content_type="text/plain")
-        with pytest.raises(UnsupportedImageType):
+        with pytest.raises(EmptyBatch):
             register_upload([bad])
         assert OutboxMessage.objects.count() == 0

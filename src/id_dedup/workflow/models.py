@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Self, override
 
 import numpy as np
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.db.models import Avg, Count
 from django.db.models.signals import post_delete
@@ -83,6 +84,12 @@ class Batch(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     created_at = models.DateTimeField(auto_now_add=True)
+    skipped_files = ArrayField(
+        models.CharField(max_length=1024, blank=True),
+        default=list,
+        blank=True,
+        help_text="Names of uploaded files rejected at registration; an audit trail.",
+    )
 
     if TYPE_CHECKING:
         images: models.Manager[Image]

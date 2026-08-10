@@ -8,7 +8,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.decorators.http import require_POST, require_safe
 
-from id_dedup.images import UnsupportedImageType
 from id_dedup.typing.request import AuthenticatedHttpRequest
 from id_dedup.workflow import service
 from id_dedup.workflow.models import ClusterReviewTicket, ClusterReviewTicketQuerySet, TicketAlreadyClosed
@@ -25,9 +24,15 @@ class UploadView(LoginRequiredMixin, View):
         """Register uploaded images for async processing."""
         files = request.FILES.getlist("images")
         try:
-            service.register_upload(files, user_id=request.user.pk)
-        except (UnsupportedImageType, service.NoFilesUploaded) as exc:
+            batch = service.register_upload(files, user_id=request.user.pk)
+        except service.EmptyBatch as exc:
             return render(request, "workflow/upload.html", {"error": str(exc)})
+        if batch.skipped_files:
+            n = len(batch.skipped_files)
+            messages.warning(
+                request,
+                f"Skipped {n} file{'s' if n != 1 else ''} — not supported image types.",
+            )
         messages.success(request, "Upload received — clustering will start shortly.")
         return redirect("home")
 
