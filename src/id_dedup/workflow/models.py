@@ -212,7 +212,7 @@ class Conversation(models.Model):
             },
         )
 
-    def remove_from_pending(self, drained_ids: list[str]) -> None:
+    def drain_images(self, drained_ids: list[str]) -> None:
         """
         Remove the given image IDs from the pending set.
 
