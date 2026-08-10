@@ -128,33 +128,68 @@ class TestClusterReviewTicketNew:
 
 
 @pytest.mark.django_db
-class TestImageAssignToCluster:
-    def test_persists_by_default(self):
+class TestImageStoreEmbedding:
+    def test_persists_embedding_only(self):
+        batch = Batch.objects.create()
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+        embedding = [0.1] * 512
+
+        img.store_embedding(embedding)
+
+        stored = Image.objects.get(pk=img.pk)
+        assert list(stored.embedding) == embedding
+        assert stored.cluster_ticket is None
+
+    def test_save_false_leaves_unpersisted(self):
+        batch = Batch.objects.create()
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+        embedding = [0.1] * 512
+
+        img.store_embedding(embedding, save=False)
+
+        assert list(img.embedding) == embedding
+        assert img.updated_at is not None
+        stored = Image.objects.get(pk=img.pk)
+        assert stored.embedding is None
+
+
+@pytest.mark.django_db
+class TestImageLinkToTicket:
+    def test_persists_ticket_only(self):
         batch = Batch.objects.create()
         ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
         img = Image.objects.create(batch=batch, source_image="images/a.jpg")
         embedding = [0.1] * 512
+        img.store_embedding(embedding)
 
-        img.assign_to_cluster(ticket, embedding)
+        img.link_to_ticket(ticket)
 
         stored = Image.objects.get(pk=img.pk)
         assert stored.cluster_ticket == ticket
         assert list(stored.embedding) == embedding
 
+    def test_does_not_touch_existing_embedding(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+
+        img.link_to_ticket(ticket)
+
+        stored = Image.objects.get(pk=img.pk)
+        assert stored.cluster_ticket == ticket
+        assert stored.embedding is None
+
     def test_save_false_leaves_unpersisted(self):
         batch = Batch.objects.create()
         ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
         img = Image.objects.create(batch=batch, source_image="images/a.jpg")
-        embedding = [0.1] * 512
 
-        img.assign_to_cluster(ticket, embedding, save=False)
+        img.link_to_ticket(ticket, save=False)
 
         assert img.cluster_ticket == ticket
-        assert list(img.embedding) == embedding
         assert img.updated_at is not None
         stored = Image.objects.get(pk=img.pk)
         assert stored.cluster_ticket is None
-        assert stored.embedding is None
 
 
 @pytest.mark.django_db

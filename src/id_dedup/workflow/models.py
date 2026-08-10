@@ -435,20 +435,35 @@ class Image(models.Model):
         Image.objects.bulk_create(images)
         return images
 
-    def assign_to_cluster(self, ticket: ClusterReviewTicket, embedding: list[float], *, save: bool = True) -> None:
+    def store_embedding(self, embedding: list[float], *, save: bool = True) -> None:
         """
-        Link this image to a cluster review ticket and store its embedding.
+        Persist this image's face embedding.
 
-        Persists by default. `save=False` defers the write to a `bulk_update`
-        (create_tickets_from_result), which is far cheaper for large clusters.
-        `updated_at` is set explicitly so the bulk path still bumps it (bulk
-        operations never fire `auto_now`).
+        Embeddings are stored for every valid image during the clustering
+        commit, independent of ticket membership — this method is the
+        per-row model-level mutation for that write. Persists by default;
+        `save=False` defers the write. `updated_at` is set explicitly so the
+        bulk path still bumps it (bulk operations never fire `auto_now`).
         """
-        self.cluster_ticket = ticket
         self.embedding = embedding
         self.updated_at = timezone.now()
         if save:
-            self.save(update_fields=["cluster_ticket", "embedding", "updated_at"])
+            self.save(update_fields=["embedding", "updated_at"])
+
+    def link_to_ticket(self, ticket: ClusterReviewTicket, *, save: bool = True) -> None:
+        """
+        Link this image to a cluster review ticket.
+
+        Only a graph edge — it never touches `embedding`, which is persisted
+        separately at clustering time. Persists by default; `save=False`
+        defers the write to a `bulk_update`, which is far cheaper for large
+        clusters. `updated_at` is set explicitly so the bulk path still bumps
+        it (bulk operations never fire `auto_now`).
+        """
+        self.cluster_ticket = ticket
+        self.updated_at = timezone.now()
+        if save:
+            self.save(update_fields=["cluster_ticket", "updated_at"])
 
 
 @receiver(post_delete, sender=Image)

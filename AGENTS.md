@@ -3,7 +3,7 @@
 Two-app architecture:
 
 - **`id_dedup.dedup`** — the original 4-step session-based wizard, kept intact for demos. All identity assignment is intentional and manual; the pipeline never auto-assigns.
-- **`id_dedup.workflow`** — ticket-based async design (in progress). Cluster review tickets with persistent DB state. Ticket list/detail/review implemented; upload→clustering wiring and auto-adjudication are not yet implemented.
+- **`id_dedup.workflow`** — ticket-based async design (in progress). Cluster review tickets with persistent DB state. Ticket list/detail/review and upload→clustering wiring implemented; auto-adjudication not yet implemented.
 
 Start with [`.agents/docs/architecture.md`](.agents/docs/architecture.md) for the pipeline, boundary rules, and DB-write constraints.
 
@@ -35,9 +35,9 @@ Start with [`.agents/docs/architecture.md`](.agents/docs/architecture.md) for th
 
 | Path | Responsibility |
 |---|---|
-| `src/id_dedup/workflow/models.py` | `Batch`, `Conversation` (lifecycle + trigger enum), `Identity` (UUID, centroid VectorField 512-d, HNSW index), `Image` (UUID, nullable FK→Identity/cluster_ticket/batch, embedding 512-d nullable, source_image), `ClusterReviewTicket` (open/closed querysets, `.close()`, `is_closed`) |
-| `src/id_dedup/workflow/service.py` | `create_tickets_from_result`, `get_kept_image_ids`, `submit_ticket_review` |
-| `src/id_dedup/workflow/tasks.py` | `process_reviewed_set` — Celery task, currently a stub (auto-adjudication planned) |
+| `src/id_dedup/workflow/models.py` | `Batch`, `Conversation` (lifecycle + trigger enum), `Identity` (UUID, centroid VectorField 512-d, HNSW index), `Image` (UUID, nullable FK→Identity/cluster_ticket/batch, embedding 512-d nullable, source_image), `ClusterReviewTicket` (open/closed querysets, `.close()`, `is_closed`). Embeddings are persisted for all valid images in the clustering commit — `link_to_ticket()` is a graph edge only, `store_embedding()` is the per-row embedding write |
+| `src/id_dedup/workflow/service.py` | `process_batch`, `create_tickets_from_result`, `get_kept_image_ids`, `submit_ticket_review` |
+| `src/id_dedup/workflow/tasks.py` | `process_batch`/`auto_adjudicate_set` (auto-adjudication stub), `dispatch_outbox` |
 | `src/id_dedup/workflow/views.py` | `ticket_list`, `ticket_detail`, `submit_review` |
 | `src/id_dedup/workflow/urls.py` | `app_name="workflow"`, mounted at `/workflow/` (`tickets/`, `tickets/<uuid:pk>/`, `tickets/<uuid:pk>/submit/`) |
 | `src/id_dedup/workflow/management/commands/seed_tickets.py` | Seeds 5 open tickets with dummy images for manual testing |
@@ -62,7 +62,7 @@ Start with [`.agents/docs/architecture.md`](.agents/docs/architecture.md) for th
 
 - **`ml/pipeline.py` has zero Django imports.** `dedup/service/proposals.py` owns all ORM interaction for identity matching and stays free of heavy ML. `service/workflow.py` is the only module that imports both — the bridge.
 - **Single DB write path (dedup app):** only `workflow.persist_assignments()` creates `Identity`/`Image` records. `complete()` is read-only. The workflow app has its own write paths (`create_tickets_from_result`, `submit_ticket_review`).
-- **No auto-assignment (dedup app):** every identity assignment originates from an explicit user POST. The workflow app *plans* auto-adjudication in `process_reviewed_set` (not yet implemented).
+- **No auto-assignment (dedup app):** every identity assignment originates from an explicit user POST. The workflow app *plans* auto-adjudication in `auto_adjudicate_set` (not yet implemented).
 - **No Django Forms, no DRF.** Prefer function-based views.
 
 Full rationale and detail: [`.agents/docs/architecture.md`](.agents/docs/architecture.md).
