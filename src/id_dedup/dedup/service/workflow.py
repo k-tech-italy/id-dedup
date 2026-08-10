@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from django.core.files import File
 from django.db import transaction
 
-from id_dedup.images import UnsupportedImageType, is_valid_image
+from id_dedup.images import UnsupportedImageType, validate_image
 from id_dedup.ml import pipeline
 
 from ..models import Identity, Image
@@ -28,9 +28,15 @@ def process_uploads(
     tmpdir: str | Path,
     default_file_name: str = "image",
 ) -> ClusterResult:
+    """Validate uploads, persist them to *tmpdir*, and run the image pipeline."""
     uploads = list(uploads or [])
 
-    invalid = [f.name for f in uploads if not is_valid_image(f)]
+    invalid: list[str] = []
+    for file in uploads:
+        try:
+            validate_image(file)
+        except UnsupportedImageType:
+            invalid.append(file.name or default_file_name)
     if invalid:
         raise UnsupportedImageType(
             f"Unsupported file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted.",

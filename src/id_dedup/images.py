@@ -23,18 +23,17 @@ class _ReadableSeekable(Protocol):
     def seek(self, offset: int, whence: int = 0, /) -> int: ...
 
 
-def is_valid_image(uploaded: _ReadableSeekable) -> bool:
-    """
-    Return True if *uploaded* claims to be a JPEG/PNG/WEBP image (magic bytes).
+_validators = {
+    "jpg": lambda header: header[:3] == _JPEG,
+    "png": lambda header: header[:8] == _PNG,
+    "webp": lambda header: header[:4] == b"RIFF" and header[8:12] == b"WEBP",
+}
 
-    This is the wizard's existing hand-rolled detection, moved to a shared module.
-    A decode-based validator (Pillow verify/load, dimension caps) is a future
-    ticket; do not extend this function beyond the current behavior.
-    """
+
+def validate_image(uploaded: _ReadableSeekable) -> None:
+    """Raise :class:`UnsupportedImageType` unless `uploaded` is a JPEG/PNG/WEBP image."""
     header = uploaded.read(12)
     uploaded.seek(0)
-    if header[:3] == _JPEG:
-        return True
-    if header[:8] == _PNG:
-        return True
-    return header[:4] == b"RIFF" and header[8:12] == b"WEBP"
+    if any(validator(header) for validator in _validators.values()):
+        return
+    raise UnsupportedImageType("File is not a supported image type (JPG, PNG, or WEBP).")

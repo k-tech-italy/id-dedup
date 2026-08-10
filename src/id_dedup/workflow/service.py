@@ -11,7 +11,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 
-from id_dedup.images import UnsupportedImageType, is_valid_image
+from id_dedup.images import UnsupportedImageType, validate_image
 from id_dedup.ml.pipeline import ClusterMember, ClusterResult, cluster_dbscan, extract_embedding
 
 from .models import (
@@ -30,8 +30,35 @@ if TYPE_CHECKING:
     from django.core.files.uploadedfile import UploadedFile
 
 
-class NoFilesUploaded(Exception):
-    """The upload request contained no files."""
+class EmptyBatch(Exception):
+    """No batch can be created — no files were uploaded, or none were valid images."""
+
+
+def _check_uploads(uploads: list[UploadedFile] | None) -> tuple[list[UploadedFile], list[str]]:
+    """
+    Partition uploads into valid files and skipped names.
+
+    Raises :class:`EmptyBatch` when the request carried no files at all, or
+    when none of the uploaded files are valid images. Skipped names never
+    appear in the message — they are the caller's audit trail.
+    """
+    if not uploads:
+        raise EmptyBatch("No files selected.")
+
+    valid: list[UploadedFile] = []
+    skipped: list[str] = []
+    for file in uploads:
+        try:
+            validate_image(file)
+        except UnsupportedImageType:
+            skipped.append(file.name or "upload")
+        else:
+            valid.append(file)
+
+    if not valid:
+        raise EmptyBatch("None of the uploaded files were valid images.")
+
+    return valid, skipped
 
 
 @transaction.atomic
@@ -42,24 +69,23 @@ def register_upload(
     """
     Validate uploads, register Batch + Image rows, and enqueue processing atomically.
 
-    Each file's name is uniquified with a `time.time_ns()` suffix so same-named
-    uploads cannot overwrite each other in storage. The `UniqueConstraint` on
-    `Image.source_image` is the backoff. No broker calls are made — the
-    resulting `OutboxMessage` is published later by the `dispatch_outbox` reaper.
+    Invalid files are skipped rather than fatal: their names are recorded on
+    `batch.skipped_files` as an audit trail and only the valid files are
+    registered. If nothing valid remains, :class:`EmptyBatch` is raised and
+    nothing is persisted. Each valid file's name is uniquified with a
+    `time.time_ns()` suffix so same-named uploads cannot overwrite each other
+    in storage; the `UniqueConstraint` on `Image.source_image` is the backoff.
+    No broker calls are made — the resulting `OutboxMessage` is published
+    later by the `dispatch_outbox` reaper.
     """
-    if not uploads:
-        raise NoFilesUploaded("No files selected.")
-
-    # FIXME: don't bail out in case of invalid images - process the valid ones instead
-    invalid = [name for file in uploads if (name := file.name) and not is_valid_image(file)]
-    if invalid:
-        raise UnsupportedImageType(
-            f"Unsupported or corrupt file type(s): {', '.join(invalid)}. Only JPG, PNG, and WEBP are accepted.",
-        )
+    valid, skipped = _check_uploads(uploads)
 
     # FIXME: enforce file count / total size limits at upload.
     batch = Batch.new()
-    Image.register_uploads(batch, uploads)
+    if skipped:
+        batch.skipped_files = skipped
+        batch.save(update_fields=["skipped_files"])
+    Image.register_uploads(batch, valid)
 
     OutboxMessage.objects.create(
         task_name="id_dedup.workflow.tasks.process_batch",
@@ -209,6 +235,7 @@ def _commit_clustering(
             "total_images": work.total_images,
             "embeddings_extracted": len(work.valid_images),
             "failed_images": work.total_images - len(work.valid_images),
+            "skipped_files": locked.skipped_files,
             "clusters": len(work.result.groups),
             "tickets_created": len(tickets),
             "singletons": len(work.singleton_ids),
