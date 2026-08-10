@@ -59,7 +59,8 @@ class TestCreateTicketsFromResult:
         assert Image.objects.count() == 2
         assert Image.objects.filter(cluster_ticket=tickets[0]).count() == 2
 
-    def test_embeddings_stored(self, tmp_path):
+    def test_links_ticket_without_touching_embedding(self, tmp_path):
+        """Ticket linking is a graph edge only — embeddings are written earlier in the clustering commit."""
         batch = Batch.objects.create()
         img = _register_image(batch, tmp_path, "g0a.jpg")
         member = _member_for(img, 10)
@@ -70,7 +71,8 @@ class TestCreateTicketsFromResult:
         create_tickets_from_result(result, batch)
 
         img.refresh_from_db()
-        assert np.allclose(np.asarray(img.embedding), member.embedding)
+        assert img.cluster_ticket is not None
+        assert img.embedding is None
 
     def test_updated_at_bumped(self, tmp_path):
         batch = Batch.objects.create()

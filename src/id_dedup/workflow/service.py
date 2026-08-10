@@ -226,9 +226,12 @@ def create_tickets_from_result(
     """
     Create one ClusterReviewTicket per group cluster, linking the batch's registered images.
 
-    Images are matched by source_image.path. Singletons (label -1) produce no
-    tickets. Members whose path doesn't match a registered image are skipped;
-    the ticket is still created.
+    Images are matched by source_image.path and linked to their ticket — a
+    graph edge only. Embeddings are never written here: they are persisted
+    for every valid image earlier in the clustering commit
+    (`_commit_clustering`), before this function runs. Singletons (label -1)
+    produce no tickets. Members whose path doesn't match a registered image
+    are skipped; the ticket is still created.
     """
     by_path = {
         pathlib.Path(image.source_image.path): image
@@ -243,9 +246,9 @@ def create_tickets_from_result(
             image = by_path.get(member.file)
             if image is None:
                 continue
-            image.assign_to_cluster(ticket, member.embedding.tolist(), save=False)
+            image.link_to_ticket(ticket, save=False)
             to_update.append(image)
-        Image.objects.bulk_update(to_update, ["cluster_ticket", "embedding", "updated_at"])
+        Image.objects.bulk_update(to_update, ["cluster_ticket", "updated_at"])
         tickets.append(ticket)
 
     return tickets

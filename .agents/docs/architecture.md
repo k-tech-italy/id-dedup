@@ -5,7 +5,7 @@
 ## Two-app architecture
 
 - **`id_dedup.dedup`** — the original 4-step session-based wizard, kept intact for demos. All identity assignment is intentional and manual; the pipeline never auto-assigns.
-- **`id_dedup.workflow`** — ticket-based async design (in progress). Cluster review tickets with persistent DB state. Ticket list/detail/review are implemented; upload→clustering wiring and auto-adjudication are not.
+- **`id_dedup.workflow`** — ticket-based async design (in progress). Cluster review tickets with persistent DB state. Ticket list/detail/review and upload→clustering wiring are implemented; auto-adjudication (`auto_adjudicate_set`) is still a stub.
 
 The two apps are independent: they share no code, and each has its own `Identity`/`Image` models.
 
@@ -20,18 +20,21 @@ The workflow app persists state in the DB and tracks work via tickets and conver
 - **`Batch`** — groups image uploads.
 - **`Conversation`** — lifecycle/audit log for a batch. `trigger` is a `Trigger` enum (`upload`, `cluster review`, `adjudication`); queryset filters `pending()` / `completed()` / `errored()`. A `CLUSTER_REVIEW` conversation stores the review outcome in `summary`, including `kept_image_ids`.
 - **`Identity`** — UUID, `centroid` VectorField 512-d (null until images assigned) with an HNSW cosine index, timestamps. `update_centroid()` recomputes from assigned image embeddings.
-- **`Image`** — UUID, nullable FKs to `Identity`, `ClusterReviewTicket`, and `Batch`, `embedding` VectorField 512-d (null until a task fills it), `source_image`. HNSW cosine index on `embedding`. A `post_delete` signal refreshes the owning identity's centroid.
+- **`Image`** — UUID, nullable FKs to `Identity`, `ClusterReviewTicket`, and `Batch`, `embedding` VectorField 512-d, `source_image`. HNSW cosine index on `embedding`. A `post_delete` signal refreshes the owning identity's centroid. **Embedding persistence is decoupled from ticket linking**: every image with a detectable face gets its embedding stored in the clustering commit (`_commit_clustering` bulk-updates all valid images — singletons included — before tickets are created); `link_to_ticket()` only adds the ticket edge and never touches `embedding`, `store_embedding()` is the per-row model mutation.
 - **`ClusterReviewTicket`** — UUID, FK→`Batch`, `cluster_label`, `reviewed_by`, `closed_at`. Querysets `.open()` / `.closed()`; `.close(user)` uses an atomic conditional `UPDATE` (DB-level `closed_at IS NULL` guard) so concurrent closers never clobber each other. `is_closed` property.
 
 ### Service (`workflow/service.py`)
 
-- `create_tickets_from_result(result, batch)` — creates one ticket per DBSCAN group (label ≥ 0) and persists its images with their embeddings. Singletons (label −1) bypass review. Wrapped in `@transaction.atomic`.
+- `process_batch(batch_id, user_id)` — orchestrates upload clustering: `_run_clustering` extracts + L2-normalises embeddings for all images with a face, then `_commit_clustering` persists those embeddings for every valid image (singletons included) and calls `create_tickets_from_result`, all in one atomic commit. Adjudication consumers only run after this commit, so the persisted embeddings are available to them.
+- `create_tickets_from_result(result, batch)` — creates one ticket per DBSCAN group (label ≥ 0) and links the batch's images to it (`link_to_ticket`, a graph edge only — embeddings are written earlier in `_commit_clustering`). Singletons (label −1) bypass review. Wrapped in `@transaction.atomic`.
 - `get_kept_image_ids(ticket)` — reads `kept_image_ids` from the ticket's `CLUSTER_REVIEW` conversation summary; empty set while the ticket is open.
-- `submit_ticket_review(ticket, user, kept_ids)` — closes the ticket (recording the reviewer), writes a `CLUSTER_REVIEW` conversation (audit trail incl. kept/discarded counts), and dispatches `process_reviewed_set` via `.delay()`. Raises `ValueError` if the ticket is already closed.
+- `submit_ticket_review(ticket, user, kept_ids)` — closes the ticket (recording the reviewer), writes a `CLUSTER_REVIEW` conversation (audit trail incl. kept/discarded counts), and enqueues `auto_adjudicate_set` for the kept survivors via a durable `OutboxMessage`. Raises `TicketAlreadyClosed` if the ticket is already closed.
 
 ### Tasks (`workflow/tasks.py`)
 
-`process_reviewed_set` is a Celery stub — a placeholder for auto-adjudication of a reviewed cluster's kept survivors (pgvector matching, identity assignment, adjudication tickets, conversation events). Not implemented.
+- `process_batch(batch_id, user_id)` — thin adapter to `service.process_batch`; swallows `Batch.DoesNotExist`/`AlreadyClustered` as expected signals.
+- `auto_adjudicate_set(image_ids, conversation_id, user_id)` — Celery stub, a placeholder for auto-adjudication of an image set (pgvector matching, identity assignment, adjudication tickets, conversation events). Dispatched via the outbox from `process_batch` (singletons) and `submit_ticket_review` (kept survivors). Not implemented.
+- `dispatch_outbox(limit)` — durable outbox reaper: claims pending `OutboxMessage` rows with `select_for_update(skip_locked)`, sends each task, retries until `max_attempts` then dead-letters. Runs on Celery beat every ~10 s; also exposed as a management command.
 
 ### Views (`workflow/views.py`, `workflow/urls.py`)
 
@@ -96,7 +99,7 @@ This pattern is safe inside or outside a transaction boundary. The `@transaction
 
 Nothing in `pipeline.py`, `service/proposals.py`, `service/workflow.py`, or `dedup/views.py` ever automatically assigns a cluster to an identity. Every `identity_id` in `wizard_assignments` originates from an explicit user POST to `assign` or `new_identity`. Do not change this.
 
-The workflow app is different by design: auto-adjudication of kept survivors is *planned* in `process_reviewed_set`, but that task is still a stub and assigns nothing today.
+The workflow app is different by design: auto-adjudication of image sets is *planned* in `auto_adjudicate_set`, but that task is still a stub and assigns nothing today.
 
 ---
 

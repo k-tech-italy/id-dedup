@@ -128,6 +128,19 @@ class TestProcessBatch:
         assert conv.summary["singletons"] == 2
         assert set(conv.summary["pending_image_ids"]) == {str(images[2].pk), str(images[3].pk)}
 
+    def test_all_valid_images_persist_embeddings(self, monkeypatch, tmp_path):
+        """Embeddings are persisted at clustering time for every valid image — including singletons."""
+        batch = Batch.objects.create()
+        images = _make_images(batch, tmp_path, 4)
+        _patch_pipeline(monkeypatch, images, labels=[0, 0, -1, -1])
+
+        process_batch(str(batch.pk))
+
+        for i, img in enumerate(images):
+            img.refresh_from_db()
+            assert img.embedding is not None, f"{img.source_image.name} lost its embedding"
+            assert np.allclose(np.asarray(img.embedding), _unit_vector(i + 1))
+
     def test_singletons_only(self, monkeypatch, tmp_path):
         batch = Batch.objects.create()
         images = _make_images(batch, tmp_path, 3)
@@ -296,6 +309,12 @@ class TestProcessBatch:
         failed.refresh_from_db()
         assert failed.cluster_ticket is None
         assert failed.embedding is None
+
+        # Valid singleton still gets its embedding persisted early
+        valid = images[3]
+        valid.refresh_from_db()
+        assert valid.cluster_ticket is None
+        assert np.allclose(np.asarray(valid.embedding), _unit_vector(4))
 
     def test_missing_batch_is_noop(self):
         process_batch("00000000-0000-0000-0000-000000000000")

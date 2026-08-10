@@ -205,7 +205,7 @@ Module-level factory functions `_result()` and `_proposals(count)` create test d
 
 Wizard view tests that touch the ORM or use session state across requests need `@pytest.mark.django_db(transaction=True)` — this includes `search`, `complete`, and `assign` with a DB-backed identity, plus the auth/landing tests. Tests that only exercise session logic and return HTML fragments generally do not need it.
 
-Workflow view tests (`tests/integration/workflow/test_ticket_list_view.py`, `test_ticket_detail_view.py`) use `@pytest.mark.django_db` and the `logged_in_client` fixture from `tests/integration/conftest.py`. Note: `submit_review` → `submit_ticket_review` calls `process_reviewed_set.delay(...)`, so the submit-review tests (and `test_submit_review.py`) need a reachable Redis broker — no Celery eager mode is configured.
+Workflow view tests (`tests/integration/workflow/test_ticket_list_view.py`, `test_ticket_detail_view.py`) use `@pytest.mark.django_db` and the `logged_in_client` fixture from `tests/integration/conftest.py`. `submit_review` → `submit_ticket_review` enqueues `auto_adjudicate_set` via a durable `OutboxMessage` (no broker call in the request path), so the submit-review tests don't need a reachable Redis broker.
 
 HTMX redirect responses carry an `HX-Redirect` header; the Django test client exposes the final URL as `resp.url`. Check that, not the response body.
 
