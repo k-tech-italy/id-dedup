@@ -38,6 +38,7 @@ tests/
       test_views_landing.py landing page and dashboard tests
       test_views_auth.py    login/logout view tests
     workflow/
+      conftest.py                    recipe factories (batch, cluster_review_ticket, closed_cluster_review_ticket)
       test_workflow_models.py      Batch, Conversation, Identity, Image, ClusterReviewTicket model behaviour
       test_create_tickets.py       create_tickets_from_result
       test_service_get_kept_image_ids.py  get_kept_image_ids
@@ -222,3 +223,25 @@ HTMX redirect responses carry an `HX-Redirect` header; the Django test client ex
 ## Integration tests
 
 `tests/integration/` requires a live PostgreSQL + pgvector instance (`DATABASE_URL`) and, for the submit-review path, a reachable Redis broker. Keep these separate from the DB-free unit tests under `tests/unit/`.
+
+### Model-bakery fixtures
+
+Recipes are defined close to their consumers, not in a shared `baker_recipes.py`. `tests/integration/workflow/conftest.py` exposes **factory fixtures** — closures over `recipe.make(**defaults, **kwargs)` — so tests can override fields and reuse defaults:
+
+```python
+@pytest.fixture
+def batch():
+    return _factory(Recipe(workflow_models.Batch))
+
+# use: batch() for an instance, batch(_quantity=2) for several, batch(any_field=...) to override
+```
+
+Test modules that need a concrete instance repeatedly wrap the factory in a module-local fixture:
+
+```python
+@pytest.fixture
+def open_ticket(cluster_review_ticket):
+    return cluster_review_ticket()
+```
+
+Single-consumer recipes (e.g. the conversation fixtures in `test_workflow_models.py`) live in the test module itself. Import model modules, not attributes, so `Recipe` targets are unambiguous (`id_dedup.dedup.models` and `id_dedup.workflow.models` both define `Identity`).

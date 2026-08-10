@@ -2,6 +2,11 @@ import pytest
 from django.urls import reverse
 
 
+@pytest.fixture
+def open_ticket(cluster_review_ticket):
+    return cluster_review_ticket()
+
+
 @pytest.mark.django_db
 class TestTicketListView:
     def _url(self, status: str = "") -> str:

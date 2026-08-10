@@ -1,5 +1,16 @@
 import pytest
+
 from id_dedup.workflow.models import ClusterReviewTicket
+
+
+@pytest.fixture
+def open_ticket(cluster_review_ticket):
+    return cluster_review_ticket()
+
+
+@pytest.fixture
+def closed_ticket(closed_cluster_review_ticket):
+    return closed_cluster_review_ticket()
 
 
 @pytest.mark.django_db

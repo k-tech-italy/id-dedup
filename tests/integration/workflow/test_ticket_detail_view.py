@@ -9,6 +9,11 @@ from model_bakery import baker
 from id_dedup.workflow.models import Image
 
 
+@pytest.fixture
+def open_ticket(cluster_review_ticket):
+    return cluster_review_ticket()
+
+
 def _make_image(ticket, tmp_path: pathlib.Path, name: str) -> Image:
     path = tmp_path / name
     path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)

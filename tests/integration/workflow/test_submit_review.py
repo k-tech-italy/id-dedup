@@ -9,6 +9,11 @@ from model_bakery import baker
 from id_dedup.workflow.models import Conversation, Image, Trigger
 
 
+@pytest.fixture
+def open_ticket(cluster_review_ticket):
+    return cluster_review_ticket()
+
+
 def _url(pk: str) -> str:
     return reverse("workflow:submit_review", kwargs={"pk": pk})
 

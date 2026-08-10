@@ -6,6 +6,11 @@ from id_dedup.workflow.models import Conversation, Trigger
 from id_dedup.workflow.service import get_kept_image_ids, submit_ticket_review
 
 
+@pytest.fixture
+def open_ticket(cluster_review_ticket):
+    return cluster_review_ticket()
+
+
 @pytest.mark.django_db
 class TestGetKeptImageIds:
     def test_returns_empty_set_for_open_ticket(self, open_ticket):
@@ -26,19 +31,19 @@ class TestGetKeptImageIds:
         assert get_kept_image_ids(open_ticket) == set()
 
     def test_returns_kept_ids_for_closed_ticket(self, logged_in_client, tmp_path, batch, open_ticket):
-        image = open_ticket.images.create(batch=batch)
+        image = open_ticket.images.create(batch=batch())
         submit_ticket_review(open_ticket, user=User.objects.get(username="testuser"), kept_ids=[str(image.pk)])
         assert get_kept_image_ids(open_ticket) == {str(image.pk)}
 
     def test_returns_all_kept_ids_when_all_images_kept(self, logged_in_client, batch, open_ticket):
-        img1 = open_ticket.images.create(batch=batch)
-        img2 = open_ticket.images.create(batch=batch)
+        img1 = open_ticket.images.create(batch=batch())
+        img2 = open_ticket.images.create(batch=batch())
         all_ids = [str(img1.pk), str(img2.pk)]
         submit_ticket_review(open_ticket, user=User.objects.get(username="testuser"), kept_ids=all_ids)
         assert get_kept_image_ids(open_ticket) == set(all_ids)
 
     def test_excludes_discarded_images(self, logged_in_client, batch, open_ticket):
-        kept = open_ticket.images.create(batch=batch)
-        open_ticket.images.create(batch=batch)
+        kept = open_ticket.images.create(batch=batch())
+        open_ticket.images.create(batch=batch())
         submit_ticket_review(open_ticket, user=User.objects.get(username="testuser"), kept_ids=[str(kept.pk)])
         assert get_kept_image_ids(open_ticket) == {str(kept.pk)}
