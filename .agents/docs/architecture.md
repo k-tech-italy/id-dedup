@@ -34,7 +34,7 @@ The workflow app persists state in the DB and tracks work via tickets and conver
 
 - `process_batch(batch_id, user_id)` — thin adapter to `service.process_batch`; swallows `Batch.DoesNotExist`/`AlreadyClustered` as expected signals.
 - `auto_adjudicate_set(image_ids, conversation_id, user_id)` — Celery stub, a placeholder for auto-adjudication of an image set (pgvector matching, identity assignment, adjudication tickets, conversation events). Dispatched via the outbox from `process_batch` (singletons) and `submit_ticket_review` (kept survivors). Not implemented.
-- `dispatch_outbox(limit)` — durable outbox reaper: claims pending `OutboxMessage` rows with `select_for_update(skip_locked)`, sends each task, retries until `max_attempts` then dead-letters. Runs on Celery beat every ~10 s; also exposed as a management command.
+- `dispatch_outbox(limit)` — durable outbox reaper: claims pending `OutboxMessage` rows with `select_for_update(skip_locked)`, sends each task, retries until `max_attempts` then dead-letters. Sweep interval is `OUTBOX_SWEEP_SECONDS` (default 10 s) via Celery beat; also exposed as a management command.
 
 ### Views (`workflow/views.py`, `workflow/urls.py`)
 
