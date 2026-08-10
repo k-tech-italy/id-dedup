@@ -63,10 +63,17 @@ def ticket_list(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(tickets, page_size)
     page_obj = paginator.get_page(page)
+    page_range = list(paginator.get_elided_page_range(page_obj.number, on_each_side=1, on_ends=1))
     return render(
         request,
         "workflow/ticket_list.html",
-        {"tickets": page_obj, "page_obj": page_obj, "status": status, "page_size": page_size},
+        {
+            "tickets": page_obj,
+            "page_obj": page_obj,
+            "page_range": page_range,
+            "status": status,
+            "page_size": page_size,
+        },
     )
 
 
