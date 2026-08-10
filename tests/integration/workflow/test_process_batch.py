@@ -64,7 +64,7 @@ def _patch_pipeline(
         extract_map[p] = None if i in none_set else _unit_vector(i + 1)
 
     monkeypatch.setattr(
-        "id_dedup.workflow.tasks.extract_embedding",
+        "id_dedup.workflow.service.extract_embedding",
         lambda path: extract_map.get(str(path)),
     )
 
@@ -77,7 +77,7 @@ def _patch_pipeline(
         normalized = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
         return valid_labels, normalized
 
-    monkeypatch.setattr("id_dedup.workflow.tasks.cluster_dbscan", _cluster)
+    monkeypatch.setattr("id_dedup.workflow.service.cluster_dbscan", _cluster)
 
 
 def _upload_conv(batch: Batch) -> Conversation:
@@ -172,7 +172,7 @@ class TestProcessBatch:
         batch = Batch.objects.create()
         _make_images(batch, tmp_path, 2)
 
-        monkeypatch.setattr("id_dedup.workflow.tasks.extract_embedding", _raise("disk read error"))
+        monkeypatch.setattr("id_dedup.workflow.service.extract_embedding", _raise("disk read error"))
 
         with pytest.raises(RuntimeError, match="disk read error"):
             process_batch(str(batch.pk))
@@ -185,7 +185,7 @@ class TestProcessBatch:
         batch = Batch.objects.create()
         _make_images(batch, tmp_path, 2)
 
-        monkeypatch.setattr("id_dedup.workflow.tasks.extract_embedding", _raise("disk read error"))
+        monkeypatch.setattr("id_dedup.workflow.service.extract_embedding", _raise("disk read error"))
 
         def _failing_fail(conversation, message):
             raise RuntimeError("cannot record failure")
@@ -201,13 +201,14 @@ class TestProcessBatch:
         _patch_pipeline(monkeypatch, images, labels=[0, 0, -1, -1])
 
         should_fail = [True]
+        create_tickets = workflow_service.create_tickets_from_result
 
         def _maybe_fail(result, batch):
             if should_fail[0]:
                 raise RuntimeError("ticket creation failed")
-            return workflow_service.create_tickets_from_result(result, batch)
+            return create_tickets(result, batch)
 
-        monkeypatch.setattr("id_dedup.workflow.tasks.create_tickets_from_result", _maybe_fail)
+        monkeypatch.setattr("id_dedup.workflow.service.create_tickets_from_result", _maybe_fail)
 
         with pytest.raises(RuntimeError, match="ticket creation failed"):
             process_batch(str(batch.pk))
@@ -236,7 +237,7 @@ class TestProcessBatch:
         images = _make_images(batch, tmp_path, 3)
 
         # First run: extract fails
-        monkeypatch.setattr("id_dedup.workflow.tasks.extract_embedding", _raise("disk error"))
+        monkeypatch.setattr("id_dedup.workflow.service.extract_embedding", _raise("disk error"))
 
         with pytest.raises(RuntimeError, match="disk error"):
             process_batch(str(batch.pk))
