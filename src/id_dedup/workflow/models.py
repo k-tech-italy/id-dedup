@@ -101,6 +101,11 @@ class Batch(models.Model):
     if TYPE_CHECKING:
         images: models.Manager[Image]
 
+    class Meta:
+        """Plural label for the admin UI."""
+
+        verbose_name_plural = "batches"
+
     @override
     def __str__(self) -> str:
         return str(self.id)
@@ -313,6 +318,7 @@ class Identity(models.Model):
         indexes = [
             HnswIndex(name="workflow_identity_centroid_idx", fields=["centroid"], opclasses=["vector_cosine_ops"]),
         ]
+        verbose_name_plural = "identities"
 
     @override
     def __str__(self) -> str:
