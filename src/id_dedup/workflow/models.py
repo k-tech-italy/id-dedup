@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import pathlib
+import time
 import uuid
 from typing import TYPE_CHECKING, Any, Self, override
 
@@ -16,6 +18,7 @@ from pgvector.django import HnswIndex
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
+    from django.core.files.uploadedfile import UploadedFile
 
 
 def _default_max_attempts() -> int:
@@ -412,6 +415,25 @@ class Image(models.Model):
     @override
     def __str__(self) -> str:
         return self.source_image.name
+
+    @staticmethod
+    def register_uploads(batch: Batch, uploads: list[UploadedFile]) -> list[Image]:
+        """Uniquify names, commit each file to storage, and bulk-create Image rows."""
+        images: list[Image] = []
+        for file in uploads:
+            name = file.name or "upload"
+            path = pathlib.Path(name)
+            file.name = f"{path.stem}_{time.time_ns()}{path.suffix}"
+            images.append(Image(batch=batch, source_image=file))
+
+        # `bulk_create()` skips `pre_save()`, so `FileField.pre_save()` —
+        # which writes file bytes to storage — never runs. Each file is
+        # committed via `FieldFile.save(..., save=False)` before a single
+        # `INSERT` keeps DB round-trips at 1.
+        for image in images:
+            image.source_image.save(image.source_image.name, image.source_image, save=False)
+        Image.objects.bulk_create(images)
+        return images
 
     def assign_to_cluster(self, ticket: ClusterReviewTicket, embedding: list[float], *, save: bool = True) -> None:
         """
