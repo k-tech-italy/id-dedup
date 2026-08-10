@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-import time
 from typing import TYPE_CHECKING, cast
 
 from django.db import transaction
@@ -46,6 +45,7 @@ def register_upload(
     if not uploads:
         raise NoFilesUploaded("No files selected.")
 
+    # FIXME: don't bail out in case of invalid images - process the valid ones instead
     invalid = [name for file in uploads if (name := file.name) and not is_valid_image(file)]
     if invalid:
         raise UnsupportedImageType(
@@ -54,14 +54,7 @@ def register_upload(
 
     # FIXME: enforce file count / total size limits at upload.
     batch = Batch.new()
-    images: list[Image] = []
-    for file in uploads:
-        name = file.name or "upload"
-        path = pathlib.Path(name)
-        file.name = f"{path.stem}_{time.time_ns()}{path.suffix}"
-        images.append(Image(batch=batch, source_image=file))
-    # FIXME: bulk_create() does not call the pre_save() signal
-    Image.objects.bulk_create(images)  # FileField.pre_save writes each file to storage
+    Image.register_uploads(batch, uploads)
 
     OutboxMessage.objects.create(
         task_name="id_dedup.workflow.tasks.process_batch",
