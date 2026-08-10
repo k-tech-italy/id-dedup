@@ -60,13 +60,19 @@ def dispatch_outbox(limit: int = 50) -> int:
     with `skip_locked`) so concurrent sweeps never double-claim and a slow
     broker never holds a multi-row lock. `dispatched_at` is set **after** a
     successful `send_task` (at-least-once: a crash in between leaves the row
-    pending and it is re-sent, which every task tolerates via idempotency
-    guards). A row whose `send_task` keeps failing is retried **once per
-    sweep** (every ~10 s via beat) until `attempts >= max_attempts`, then
-    dead-lettered and never swept again — a broker outage burns one attempt
-    per sweep instead of exhausting the cap in a single run. Scheduled by
-    Celery beat every 10 s; also runnable via the `dispatch_outbox`
-    management command for manual/CI recovery.
+    pending and it is re-sent, which the tasks on this outbox tolerate via
+    idempotency guards). A row whose `send_task` keeps failing is attempted
+    at most once per sweep (interval `OUTBOX_SWEEP_SECONDS`, default 10 s)
+    until `attempts >= max_attempts` (`OUTBOX_MAX_ATTEMPTS`, default 5),
+    then dead-lettered and never swept again — a broker outage burns one
+    attempt per sweep instead of exhausting the cap in a single run. Scheduled
+    by Celery beat; also runnable via the `dispatch_outbox` management command
+    for manual/CI recovery.
+
+    :param limit: max pending rows a single sweep attempts (default 50). Caps a
+        beat tick's work so it stays short; any remaining rows are picked up by
+        the next sweep. Counts attempts, not just successes — a row whose
+        ``send_task`` fails still consumes one iteration.
     """
     dispatched = 0
     attempted: set[str] = set()
