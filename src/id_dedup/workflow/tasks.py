@@ -61,13 +61,14 @@ def dispatch_outbox(limit: int = 50) -> int:
     broker never holds a multi-row lock. `dispatched_at` is set **after** a
     successful `send_task` (at-least-once: a crash in between leaves the row
     pending and it is re-sent, which the tasks on this outbox tolerate via
-    idempotency guards). A row whose `send_task` keeps failing is attempted
-    at most once per sweep (interval `OUTBOX_SWEEP_SECONDS`, default 10 s)
-    until `attempts >= max_attempts` (`OUTBOX_MAX_ATTEMPTS`, default 5),
-    then dead-lettered and never swept again — a broker outage burns one
-    attempt per sweep instead of exhausting the cap in a single run. Scheduled
-    by Celery beat; also runnable via the `dispatch_outbox` management command
-    for manual/CI recovery.
+    idempotency guards). `attempts` counts every dispatch attempt — successes
+    and failures — so a row's attempt history is accurate in the admin. A row
+    whose `send_task` keeps failing is attempted at most once per sweep
+    (interval `OUTBOX_SWEEP_SECONDS`, default 10 s) until `attempts >=
+    max_attempts` (`OUTBOX_MAX_ATTEMPTS`, default 5), then dead-lettered and
+    never swept again — a broker outage burns one attempt per sweep instead of
+    exhausting the cap in a single run. Scheduled by Celery beat; also runnable
+    via the `dispatch_outbox` management command for manual/CI recovery.
 
     :param limit: max pending rows a single sweep attempts (default 50). Caps a
         beat tick's work so it stays short; any remaining rows are picked up by
@@ -121,6 +122,7 @@ def _dispatch_next(attempted: set[str]) -> tuple[str, bool] | None:
             )
         row.save(update_fields=["attempts", "last_error", "dead_lettered_at"])
         return str(row.pk), False
+    row.attempts += 1  # count successes too; attempts is total dispatch tries
     row.dispatched_at = timezone.now()  # mark AFTER send → at-least-once
-    row.save(update_fields=["dispatched_at"])
+    row.save(update_fields=["attempts", "dispatched_at"])
     return str(row.pk), True

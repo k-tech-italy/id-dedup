@@ -49,7 +49,14 @@ class OutboxMessage(models.Model):
     payload = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     dispatched_at = models.DateTimeField(null=True, blank=True)
+
     attempts = models.PositiveIntegerField(default=0)
+    """Total dispatch attempts (failures and eventual success if applicable).
+
+    Incremented by the reaper on every try until successful or at `max_attempts`,
+    in which case the message is dead-lettered.
+    """
+
     last_error = models.TextField(blank=True, default="")
     max_attempts = models.PositiveIntegerField(default=_default_max_attempts)
     dead_lettered_at = models.DateTimeField(null=True, blank=True)

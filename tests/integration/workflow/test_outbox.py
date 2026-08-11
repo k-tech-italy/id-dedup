@@ -60,7 +60,25 @@ class TestDispatchOutbox:
         assert sent == [(_PROCESS_BATCH_TASK, {})]
         msg.refresh_from_db()
         assert msg.dispatched_at is not None
-        assert msg.attempts == 0
+        assert msg.attempts == 1
+
+    def test_success_counts_attempt_after_prior_failure(self, monkeypatch):
+        msg = _outbox(max_attempts=5)
+        calls = {"n": 0}
+
+        def _send(task_name, kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("broker down")
+
+        _patch_send_task(monkeypatch, _send)
+
+        assert dispatch_outbox() == 0
+        assert dispatch_outbox() == 1
+        msg.refresh_from_db()
+        assert msg.dispatched_at is not None
+        assert msg.attempts == 2
+        assert "broker down" in msg.last_error
 
     def test_already_dispatched_rows_are_not_resent(self, monkeypatch):
         dispatched = _outbox()
