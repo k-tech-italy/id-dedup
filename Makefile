@@ -89,3 +89,8 @@ worker: guard-REDIS_URL ## Run Celery worker (requires REDIS_URL in env)
 
 beat: guard-REDIS_URL ## Run Celery beat scheduler (requires REDIS_URL in env)
 	celery -A id_dedup beat --loglevel=info
+
+dev: guard-REDIS_URL ## Run Celery worker + beat in one terminal (requires REDIS_URL in env)
+	@trap 'kill 0' INT TERM EXIT; \
+	celery -A id_dedup beat --loglevel=info & \
+	celery -A id_dedup worker --loglevel=info
