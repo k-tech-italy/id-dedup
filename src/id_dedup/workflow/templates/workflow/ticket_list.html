@@ -32,7 +32,7 @@
           <p class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">{{ ticket }}</p>
           <p class="text-xs text-gray-500 mt-0.5">Batch created {{ ticket.batch.created_at|date:"Y-m-d H:i" }}</p>
         </div>
-        <span class="text-xs px-3 py-1.5 rounded-full font-medium {% if ticket.closed_at %}border border-red-700 text-red-400{% else %}bg-emerald-950 border border-emerald-700 text-emerald-400{% endif %}">
+        <span class="text-xs px-3 py-1.5 rounded-full font-medium {% if ticket.closed_at %}border border-red-700 text-red-400{% else %}border border-emerald-700 text-emerald-400{% endif %}">
           {% if ticket.closed_at %}Closed{% else %}Open{% endif %}
         </span>
       </a>
