@@ -72,6 +72,7 @@ Full rationale and detail: [`.agents/docs/architecture.md`](.agents/docs/archite
 ```
 make develop            # npm install + uv venv + uv sync + direnv allow
 make worker             # Celery worker (requires REDIS_URL in env)
+make dev                # Celery worker + beat scheduler (outbox reaper) in one terminal
 ./manage.py runserver   # requires DATABASE_URL set, pgvector extension in Postgres
 npm run build           # one-shot JS bundle
 npm run watch           # watch mode

@@ -12,6 +12,7 @@ node_modules
 *.pyc
 __pycache__
 db.sqlite3
+celerybeat-schedule*
 
 dist
 dist-ssr
