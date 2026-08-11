@@ -5,6 +5,7 @@ import pytest
 from django.conf import settings
 from django.core.files import File
 from django.db import IntegrityError
+from django.utils import timezone
 
 from id_dedup.workflow.models import (
     Batch,
@@ -128,6 +129,25 @@ class TestClusterReviewTicketNew:
 
 
 @pytest.mark.django_db
+class TestBatchRecordSkippedFiles:
+    def test_persists_skipped_files(self):
+        batch = Batch.new()
+
+        batch.record_skipped_files(["bad.txt", "doc.pdf"])
+
+        stored = Batch.objects.get(pk=batch.pk)
+        assert stored.skipped_files == ["bad.txt", "doc.pdf"]
+
+    def test_empty_skipped_clears(self):
+        batch = Batch.new()
+        batch.record_skipped_files(["bad.txt"])
+
+        batch.record_skipped_files([])
+
+        assert Batch.objects.get(pk=batch.pk).skipped_files == []
+
+
+@pytest.mark.django_db
 class TestImageStoreEmbedding:
     def test_persists_embedding_only(self):
         batch = Batch.objects.create()
@@ -190,6 +210,60 @@ class TestImageLinkToTicket:
         assert img.updated_at is not None
         stored = Image.objects.get(pk=img.pk)
         assert stored.cluster_ticket is None
+
+
+@pytest.mark.django_db
+class TestImageBulkStoreEmbeddings:
+    def test_persists_embeddings_in_one_write(self):
+        batch = Batch.objects.create()
+        imgs = [Image.objects.create(batch=batch, source_image=f"images/{i}.jpg") for i in range(3)]
+        for i, img in enumerate(imgs):
+            img.embedding = [0.1 * i] * 512
+
+        Image.bulk_store_embeddings(imgs)
+
+        for i, img in enumerate(imgs):
+            stored = Image.objects.get(pk=img.pk)
+            assert list(stored.embedding) == [0.1 * i] * 512
+
+    def test_bumps_updated_at(self):
+        batch = Batch.objects.create()
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+        Image.objects.filter(pk=img.pk).update(updated_at=timezone.now() - datetime.timedelta(days=1))
+        stale = Image.objects.get(pk=img.pk).updated_at
+        img.embedding = [0.1] * 512
+
+        Image.bulk_store_embeddings([img])
+
+        assert Image.objects.get(pk=img.pk).updated_at > stale
+
+
+@pytest.mark.django_db
+class TestImageBulkLinkToTicket:
+    def test_links_images_without_touching_embedding(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        imgs = [Image.objects.create(batch=batch, source_image=f"images/{i}.jpg") for i in range(3)]
+        for img in imgs:
+            img.store_embedding([0.1] * 512)
+
+        Image.bulk_link_to_ticket(ticket, imgs)
+
+        for img in imgs:
+            stored = Image.objects.get(pk=img.pk)
+            assert stored.cluster_ticket == ticket
+            assert list(stored.embedding) == [0.1] * 512
+
+    def test_bumps_updated_at(self):
+        batch = Batch.objects.create()
+        ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
+        img = Image.objects.create(batch=batch, source_image="images/a.jpg")
+        Image.objects.filter(pk=img.pk).update(updated_at=timezone.now() - datetime.timedelta(days=1))
+        stale = Image.objects.get(pk=img.pk).updated_at
+
+        Image.bulk_link_to_ticket(ticket, [img])
+
+        assert Image.objects.get(pk=img.pk).updated_at > stale
 
 
 @pytest.mark.django_db

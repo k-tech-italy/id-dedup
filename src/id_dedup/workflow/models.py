@@ -107,6 +107,15 @@ class Batch(models.Model):
         """
         return Batch.objects.create()
 
+    def record_skipped_files(self, skipped: list[str]) -> None:
+        """
+        Persist the names of files rejected at upload registration.
+
+        The skipped names are an audit trail; only valid images get rows.
+        """
+        self.skipped_files = skipped
+        self.save(update_fields=["skipped_files"])
+
 
 class ConversationQuerySet(models.QuerySet):
     """Custom queryset providing convenience filters for conversation lifecycle states."""
@@ -471,6 +480,31 @@ class Image(models.Model):
         self.updated_at = timezone.now()
         if save:
             self.save(update_fields=["cluster_ticket", "updated_at"])
+
+    @staticmethod
+    def bulk_store_embeddings(images: list[Image]) -> None:
+        """
+        Persist embeddings for many images in a single UPDATE.
+
+        Each image's `embedding` must already be set on the instance. `updated_at`
+        is bumped explicitly so the bulk path still fires it (`auto_now` never runs
+        for bulk operations).
+        """
+        for image in images:
+            image.updated_at = timezone.now()
+        Image.objects.bulk_update(images, ["embedding", "updated_at"])
+
+    @staticmethod
+    def bulk_link_to_ticket(ticket: ClusterReviewTicket, images: list[Image]) -> None:
+        """
+        Link many images to a cluster review ticket in a single UPDATE.
+
+        Graph edges only — embeddings are never touched here. `updated_at` is
+        bumped explicitly so the bulk path still fires it.
+        """
+        for image in images:
+            image.link_to_ticket(ticket, save=False)
+        Image.objects.bulk_update(images, ["cluster_ticket", "updated_at"])
 
 
 @receiver(post_delete, sender=Image)
