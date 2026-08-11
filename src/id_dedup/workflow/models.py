@@ -344,6 +344,7 @@ class ClusterReviewTicketQuerySet(models.QuerySet):
         """Return the closed tickets in this queryset."""
         return self.filter(closed_at__isnull=False)
 
+
 ClusterReviewTicketManager = models.Manager.from_queryset(ClusterReviewTicketQuerySet)
 
 
