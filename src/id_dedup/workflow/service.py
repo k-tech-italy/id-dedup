@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.utils import timezone
 
 from id_dedup.images import UnsupportedImageType, validate_image
 from id_dedup.ml.pipeline import ClusterMember, ClusterResult, cluster_dbscan, extract_embedding
@@ -83,12 +82,11 @@ def register_upload(
     # FIXME: enforce file count / total size limits at upload.
     batch = Batch.new()
     if skipped:
-        batch.skipped_files = skipped
-        batch.save(update_fields=["skipped_files"])
+        batch.record_skipped_files(skipped)
     Image.register_uploads(batch, valid)
 
-    OutboxMessage.objects.create(
-        task_name="id_dedup.workflow.tasks.process_batch",
+    OutboxMessage.new(
+        task="id_dedup.workflow.tasks.process_batch",
         payload={"batch_id": str(batch.pk), "user_id": user_id},
     )
     return batch
@@ -214,9 +212,7 @@ def _commit_clustering(
         return
 
     if work.valid_images:
-        for image in work.valid_images:
-            image.updated_at = timezone.now()
-        Image.objects.bulk_update(work.valid_images, ["embedding", "updated_at"])
+        Image.bulk_store_embeddings(work.valid_images)
     tickets = create_tickets_from_result(work.result, locked)
 
     if work.singleton_ids:
@@ -273,9 +269,8 @@ def create_tickets_from_result(
             image = by_path.get(member.file)
             if image is None:
                 continue
-            image.link_to_ticket(ticket, save=False)
             to_update.append(image)
-        Image.objects.bulk_update(to_update, ["cluster_ticket", "updated_at"])
+        Image.bulk_link_to_ticket(ticket, to_update)
         tickets.append(ticket)
 
     return tickets
