@@ -17,6 +17,7 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pgvector>=0.5.0",
     "psycopg[binary]>=3.3.4",
+    "python-decouple>=3.8",
     "redis>=5.0",
     "scikit-learn>=1.9.0",
 ]
@@ -33,6 +34,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+addopts = "--ds tests.settings"
 filterwarnings = ["ignore::FutureWarning:insightface"]
 
 [build-system]
