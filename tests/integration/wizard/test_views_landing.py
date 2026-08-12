@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from django.contrib.auth.models import User
 from django.urls import reverse
 
 
@@ -28,14 +27,12 @@ class TestLandingPage:
         assert b"csrfmiddlewaretoken" in resp.content
 
     @pytest.mark.django_db(transaction=True)
-    def test_logout_redirects_to_landing_then_shows_about(self, client):
-        User.objects.create_user(username="testuser", password="testpass123")
-        client.login(username="testuser", password="testpass123")
-        resp = client.post(reverse("logout"))
+    def test_logout_redirects_to_landing_then_shows_about(self, logged_in_client):
+        resp = logged_in_client.post(reverse("logout"))
         assert resp.status_code == 302
         assert resp.url == "/"
 
-        resp = client.get("/")
+        resp = logged_in_client.get("/")
         assert resp.status_code == 200
         assert b"Face image deduplication" in resp.content
         assert b"Login" in resp.content

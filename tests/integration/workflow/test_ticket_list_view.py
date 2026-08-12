@@ -1,7 +1,6 @@
-import datetime
-
 import pytest
 from django.urls import reverse
+from model_bakery import baker
 
 from id_dedup.workflow.models import Batch, ClusterReviewTicket
 
@@ -13,9 +12,8 @@ class TestTicketListView:
         query = f"?status={status}" if status else ""
         return f"{base_url}{query}"
 
-    def _create_tickets(self, count: int) -> list:
-        batch = Batch.objects.create()
-        return [ClusterReviewTicket.objects.create(batch=batch, cluster_label=i) for i in range(count)]
+    def _create_tickets(self, count: int) -> None:
+        baker.make(ClusterReviewTicket, batch=baker.make(Batch), _quantity=count)
 
     def test_anonymous_user_redirected_to_login(self, client):
         response = client.get(self._url())
@@ -42,39 +40,31 @@ class TestTicketListView:
         response = logged_in_client.get(self._url(status="invalid"))
         assert response.context["status"] == "open"
 
-    def test_open_ticket_appears_in_open_tab(self, logged_in_client):
-        ticket = ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
+    def test_open_ticket_appears_in_open_tab(self, logged_in_client, cluster_review_ticket):
         response = logged_in_client.get(self._url(status="open"))
-        assert ticket in response.context["tickets"]
+        assert cluster_review_ticket in response.context["tickets"]
 
-    def test_open_ticket_absent_from_closed_tab(self, logged_in_client):
-        ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
+    def test_open_ticket_absent_from_closed_tab(self, logged_in_client, cluster_review_ticket):
         response = logged_in_client.get(self._url(status="closed"))
         assert list(response.context["tickets"]) == []
 
-    def test_closed_ticket_appears_in_closed_tab(self, logged_in_client):
-        ticket = ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
-        ticket.close()
+    def test_closed_ticket_appears_in_closed_tab(self, logged_in_client, closed_cluster_review_ticket):
         response = logged_in_client.get(self._url(status="closed"))
-        assert ticket in response.context["tickets"]
+        assert closed_cluster_review_ticket in response.context["tickets"]
 
-    def test_closed_ticket_absent_from_open_tab(self, logged_in_client):
-        ticket = ClusterReviewTicket.objects.create(batch=Batch.objects.create(), cluster_label=0)
-        ticket.close()
+    def test_closed_ticket_absent_from_open_tab(self, logged_in_client, closed_cluster_review_ticket):
         response = logged_in_client.get(self._url(status="open"))
         assert list(response.context["tickets"]) == []
 
-    def test_open_and_closed_ticket_appear_in_all_tab(self, logged_in_client):
-        batch = Batch.objects.create()
-        open_ticket = ClusterReviewTicket.objects.create(batch=batch, cluster_label=0)
-        closed_ticket = ClusterReviewTicket.objects.create(
-            batch=batch,
-            cluster_label=0,
-            closed_at=datetime.datetime(2026, 7, 24, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        )
+    def test_open_and_closed_ticket_appear_in_all_tab(
+        self,
+        logged_in_client,
+        cluster_review_ticket,
+        closed_cluster_review_ticket,
+    ):
         response = logged_in_client.get(self._url(status="all"))
-        assert open_ticket in response.context["tickets"]
-        assert closed_ticket in response.context["tickets"]
+        assert cluster_review_ticket in response.context["tickets"]
+        assert closed_cluster_review_ticket in response.context["tickets"]
 
     def test_default_page_size_is_10(self, logged_in_client):
         response = logged_in_client.get(self._url())
@@ -112,10 +102,7 @@ class TestTicketListView:
         assert response.context["page_obj"].number == 1
 
     def test_elided_page_range_for_middle_page(self, logged_in_client):
-        batch = Batch.objects.create()
-        ClusterReviewTicket.objects.bulk_create(
-            ClusterReviewTicket(batch=batch, cluster_label=i) for i in range(120)
-        )
+        self._create_tickets(120)
         response = logged_in_client.get(f"{self._url()}?page=6")
         assert response.context["page_range"] == [1, "…", 5, 6, 7, "…", 12]
 

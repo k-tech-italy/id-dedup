@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
+from model_bakery import baker
 
 from id_dedup.workflow.models import Batch, Image, OutboxMessage
 from id_dedup.workflow.service import EmptyBatch, register_upload
@@ -141,11 +142,10 @@ class TestUploadView:
     # Constraints
     # ------------------------------------------------------------------
 
-    def test_duplicate_source_image_rejected(self):
-        batch = Batch.objects.create()
-        Image.objects.create(batch=batch, source_image="images/collision.jpg")
+    def test_duplicate_source_image_rejected(self, batch):
+        baker.make(Image, batch=batch, source_image="images/collision.jpg")
         with pytest.raises(IntegrityError):
-            Image.objects.create(batch=batch, source_image="images/collision.jpg")
+            baker.make(Image, batch=batch, source_image="images/collision.jpg")
 
 
 @pytest.mark.django_db
