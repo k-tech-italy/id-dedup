@@ -4,6 +4,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.utils import timezone
+from model_bakery import baker
 
 from id_dedup.workflow.models import Batch, Image, OutboxMessage
 from id_dedup.workflow.service import register_upload
@@ -14,7 +15,7 @@ _PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 
 def _outbox(task_name: str = "id_dedup.workflow.tasks.process_batch", **kwargs) -> OutboxMessage:
-    return OutboxMessage.objects.create(task_name=task_name, payload={}, **kwargs)
+    return baker.make(OutboxMessage, task_name=task_name, payload={}, **kwargs)
 
 
 def _patch_send_task(monkeypatch, send):
