@@ -8,7 +8,7 @@
 pytest
 ```
 
-`DATABASE_URL` must be set in the environment. `tests/conftest.py` calls `django.setup()` using it. `tests/unit/` mocks the ORM and never touches a real DB; `tests/integration/` runs against the real Postgres + pgvector configured by `DATABASE_URL`.
+Tests run against a dedicated test settings module (`tests/settings.py`), forced via `--ds tests.settings` in `[tool.pytest.ini_options]` (this beats any exported `DJANGO_SETTINGS_MODULE`). It seeds a stable test `SECRET_KEY` before importing the app's real settings module (`id_dedup.config.settings`), so tests never depend on `.env` for `SECRET_KEY` (or `DEBUG`). `DATABASE_URL` is still read via the `env` proxy from the shell environment/`.env` (direnv) — required for integration tests, falling back to the proxy default if unset. `tests/unit/` mocks the ORM and never touches a real DB; `tests/integration/` runs against the real Postgres + pgvector configured by `DATABASE_URL`.
 
 ---
 
@@ -16,8 +16,10 @@ pytest
 
 ```
 tests/
-  conftest.py               Django test setup; session-scoped pipeline fixture (cluster_result);
-                            splittable_result; per-image/person parametrised fixtures; real images at tests/examples/
+  settings.py                test settings module (--ds): seeds SECRET_KEY, imports app settings
+  conftest.py               Django settings bootstrap (env-proxy settings module); session-scoped
+                            pipeline fixture (cluster_result); splittable_result; per-image/person
+                            parametrised fixtures; real images at tests/examples/
   examples/
     person1/ … person4/     real face photos used by pipeline integration fixtures
   unit/

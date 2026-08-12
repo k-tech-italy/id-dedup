@@ -10,15 +10,16 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
-import os
 import secrets
 import warnings
 from pathlib import Path
-from urllib.parse import urlparse
 
 import django_stubs_ext
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse_lazy
+
+from id_dedup.config.databases import build_databases
+from id_dedup.config.environment import env
 
 # Enable richer type checking
 django_stubs_ext.monkeypatch()
@@ -31,33 +32,27 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 
-def _env_var_to_bool(name: str, default: bool = False) -> bool:
-    return os.environ.get(name, str(default)).casefold() in ("1", "true", "yes", "on")
-
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = _env_var_to_bool("DEBUG")
+DEBUG = env("DEBUG")
 
 # SECURITY WARNING: keep the secret key used in production secret!
-if secret_key := os.environ.get("SECRET_KEY"):
-    SECRET_KEY = secret_key
-elif DEBUG:
+try:
+    SECRET_KEY = env("SECRET_KEY")
+except ImproperlyConfigured:
+    if not DEBUG:
+        raise
     warnings.warn("SECRET_KEY not set; generating an ephemeral key for development", stacklevel=1)
     SECRET_KEY = secrets.token_urlsafe(50)
-else:
-    # secret key must be set in production
-    raise ImproperlyConfigured("SECRET_KEY environment variable not set")
 
-_DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1"
-ALLOWED_HOSTS = [host.strip() for host in os.environ.get("ALLOWED_HOSTS", _DEFAULT_ALLOWED_HOSTS).split(",")]
+ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
 
 # Security
 
 CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = _env_var_to_bool("SECURE_SSL_REDIRECT")
+SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT")
 SESSION_COOKIE_SECURE = SECURE_SSL_REDIRECT or not DEBUG
-SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_SECONDS = env("SECURE_HSTS_SECONDS")
 
 
 # Application definition
@@ -107,20 +102,7 @@ WSGI_APPLICATION = "id_dedup.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-try:
-    parsed = urlparse(os.environ["DATABASE_URL"])
-except KeyError as e:
-    raise ImproperlyConfigured("DATABASE_URL environment variable not set") from e
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": parsed.path.lstrip("/"),
-        "USER": parsed.username,
-        "PASSWORD": parsed.password,
-        "HOST": parsed.hostname,
-        "PORT": parsed.port,
-    },
-}
+DATABASES = build_databases(env("DATABASE_URL"))
 
 
 # Password validation
@@ -178,21 +160,21 @@ LOGOUT_REDIRECT_URL = "/"
 
 # Workflow outbox
 # Max attempts before an undeliverable OutboxMessage is dead-lettered.
-OUTBOX_MAX_ATTEMPTS = int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5"))
+OUTBOX_MAX_ATTEMPTS = env("OUTBOX_MAX_ATTEMPTS")
 # Seconds between outbox sweeps (Celery beat schedule for dispatch_outbox).
-OUTBOX_SWEEP_SECONDS = float(os.environ.get("OUTBOX_SWEEP_SECONDS", "10.0"))
+OUTBOX_SWEEP_SECONDS = env("OUTBOX_SWEEP_SECONDS")
 
 # Cache (used by Celery for result passing)
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        "LOCATION": env("REDIS_URL"),
     },
 }
 
 # Celery
-CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get("REDIS_RESULT_URL", "redis://localhost:6379/1")
+CELERY_BROKER_URL = env("REDIS_URL")
+CELERY_RESULT_BACKEND = env("REDIS_RESULT_URL")
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
