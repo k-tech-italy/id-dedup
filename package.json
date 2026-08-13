@@ -27,6 +27,7 @@
   "dependencies": {
     "alpinejs": "^3.15.12",
     "htmx.org": "^2.0.10",
+    "lucide": "^1.31.0",
     "sortablejs": "^1.15.7"
   }
 }
