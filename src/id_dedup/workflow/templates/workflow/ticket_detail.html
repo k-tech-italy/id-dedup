@@ -4,7 +4,16 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12"
-     x-data="{ keptIds: [] }"
+     x-data="{
+       keptIds: [],
+       viewerOpen: false,
+       viewerIndex: 0,
+       images: [
+         {% for image in ticket.images.all %}
+         { url: '{{ image.source_image.url|escapejs }}', name: '{{ image.source_image.name|escapejs }}', id: '{{ image.id|escapejs }}' },
+         {% endfor %}
+       ]
+     }"
      x-init="keptIds = []">
 
   {# header #}
@@ -25,33 +34,94 @@
     {% csrf_token %}
     <div class="flex flex-wrap gap-4 mb-8">
       {% for image in ticket.images.all %}
-      <label class="flex flex-col items-center gap-1.5 cursor-pointer group{% if ticket.closed_at %} opacity-50 cursor-default pointer-events-none{% endif %}">
-        <input type="checkbox"
-               name="keep"
-               value="{{ image.id }}"
-               class="sr-only"
-               x-model="keptIds"
-               {% if ticket.closed_at %}disabled{% endif %} />
-        <div class="bg-gray-800 rounded-lg overflow-hidden w-28 h-28 transition-all duration-150
-                    group-hover:ring-1 group-hover:ring-gray-600{% if ticket.closed_at and image.id|stringformat:'s' not in kept_ids %} opacity-30{% endif %}"
-             :style="keptIds.includes('{{ image.id }}')
-                       ? 'box-shadow:0 0 0 2px #10b981'
-                       : ''">
-          <img src="{{ image.source_image.url }}"
-               alt="{{ image.source_image.name }}"
-               class="w-full h-full object-cover"
-               loading="lazy" />
-        </div>
-        <span class="text-[11px] text-gray-500 truncate max-w-28 text-center{% if ticket.closed_at and image.id|stringformat:'s' not in kept_ids %} opacity-30{% endif %}"
-              :class="{ 'text-gray-300': keptIds.includes('{{ image.id }}') }">
-          {{ image.source_image.name|truncatechars:16 }}
-        </span>
-      </label>
+      <div class="relative">
+        <button type="button"
+                class="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-gray-950/70 hover:bg-sky-500 text-gray-300 hover:text-white flex items-center justify-center transition-all cursor-pointer hover:ring-2 hover:ring-sky-300"
+                title="View full size"
+                @click.stop="viewerIndex = {{ forloop.counter0 }}; viewerOpen = true">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+          </svg>
+        </button>
+        <label class="flex flex-col items-center gap-1.5 cursor-pointer group{% if ticket.closed_at %} opacity-50 cursor-default pointer-events-none{% endif %}">
+          <input type="checkbox"
+                 name="keep"
+                 value="{{ image.id }}"
+                 class="sr-only"
+                 x-model="keptIds"
+                 {% if ticket.closed_at %}disabled{% endif %} />
+          <div class="bg-gray-800 rounded-lg overflow-hidden w-28 h-28 transition-all duration-150
+                      group-hover:ring-1 group-hover:ring-gray-600{% if ticket.closed_at and image.id|stringformat:'s' not in kept_ids %} opacity-30{% endif %}"
+               :style="keptIds.includes('{{ image.id }}')
+                         ? 'box-shadow:0 0 0 2px #10b981'
+                         : ''">
+            <img src="{{ image.source_image.url }}"
+                 alt="{{ image.source_image.name }}"
+                 class="w-full h-full object-cover"
+                 loading="lazy" />
+          </div>
+          <span class="text-[11px] text-gray-500 truncate max-w-28 text-center{% if ticket.closed_at and image.id|stringformat:'s' not in kept_ids %} opacity-30{% endif %}"
+                :class="{ 'text-gray-300': keptIds.includes('{{ image.id }}') }">
+            {{ image.source_image.name|truncatechars:16 }}
+          </span>
+        </label>
+      </div>
       {% empty %}
       <p class="text-gray-500 text-sm">No images in this cluster.</p>
       {% endfor %}
     </div>
   </form>
+
+  {# image viewer lightbox #}
+  <div x-show="viewerOpen"
+       x-cloak
+       class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+       @click="viewerOpen = false"
+       @keydown.escape.window="viewerOpen = false"
+       @keydown.left.window="viewerOpen && viewerIndex > 0 && (viewerIndex -= 1)"
+       @keydown.right.window="viewerOpen && viewerIndex < images.length - 1 && (viewerIndex += 1)"
+       role="dialog"
+       aria-modal="true">
+    <button type="button"
+            class="absolute top-4 right-4 w-9 h-9 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white flex items-center justify-center transition-colors"
+            title="Close (Esc)"
+            @click="viewerOpen = false">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+
+    <button type="button"
+            class="absolute left-3 md:left-6 w-10 h-10 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Previous"
+            :disabled="viewerIndex === 0"
+            @click.stop="viewerIndex -= 1">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+    </button>
+
+    <figure class="max-w-full max-h-full px-12 md:px-20" @click.stop>
+      <img :src="images[viewerIndex].url"
+           :alt="images[viewerIndex].name"
+           class="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
+      <figcaption class="text-center text-sm text-gray-400 mt-3">
+        <span x-text="(viewerIndex + 1) + ' / ' + images.length"></span>
+        <span class="text-gray-500">&middot;</span>
+        <span class="inline-block align-bottom max-w-[50vw] truncate" x-text="images[viewerIndex].name"></span>
+      </figcaption>
+    </figure>
+
+    <button type="button"
+            class="absolute right-3 md:right-6 w-10 h-10 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Next"
+            :disabled="viewerIndex === images.length - 1"
+            @click.stop="viewerIndex += 1">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
+  </div>
 
   {# footer: submit bar #}
   <div class="flex items-center justify-between pt-4 border-t border-gray-800">
