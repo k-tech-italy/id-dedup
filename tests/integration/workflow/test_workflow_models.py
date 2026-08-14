@@ -21,18 +21,38 @@ from id_dedup.workflow.models import (
 
 
 @pytest.fixture
-def open_conversation():
-    return baker.make(Conversation, trigger=Trigger.UPLOAD, summary={})
+def open_conversation(conversation_factory):
+    return conversation_factory(trigger=Trigger.UPLOAD, summary={})
 
 
 @pytest.fixture
-def completed_conversation():
-    return baker.make(Conversation, trigger=Trigger.UPLOAD, summary={}, ended_at=timezone.now())
+def completed_conversation(conversation_factory):
+    return conversation_factory(trigger=Trigger.UPLOAD, summary={}, ended_at=timezone.now())
 
 
 @pytest.fixture
-def errored_conversation():
-    return baker.make(Conversation, trigger=Trigger.UPLOAD, summary={}, error_message="oops")
+def errored_conversation(conversation_factory):
+    return conversation_factory(trigger=Trigger.UPLOAD, summary={}, error_message="oops")
+
+
+@pytest.fixture
+def errorless_conversation(conversation_factory):
+    return conversation_factory(trigger=Trigger.UPLOAD, summary={})
+
+
+@pytest.fixture
+def outbox_message_with_payload(outbox_message_factory):
+    return outbox_message_factory(payload={"batch_id": "x"})
+
+
+@pytest.fixture
+def image(image_factory):
+    return image_factory(source_image="images/a.jpg")
+
+
+@pytest.fixture
+def images(image_factory):
+    return [image_factory(source_image=f"images/{i}.jpg") for i in range(3)]
 
 
 @pytest.mark.django_db
@@ -67,9 +87,7 @@ class TestConversationQuerySet:
             errored_conversation.pk,
         ]
 
-    def test_errored_excludes_empty_error_message(self, errored_conversation):
-        baker.make(Conversation, trigger=Trigger.UPLOAD, error_message="")
-
+    def test_errored_excludes_empty_error_message(self, errored_conversation, errorless_conversation):
         assert list(cast("ConversationQuerySet", Conversation.objects).errored().values_list("pk", flat=True)) == [
             errored_conversation.pk,
         ]
@@ -77,8 +95,8 @@ class TestConversationQuerySet:
 
 @pytest.mark.django_db
 class TestOutboxMessage:
-    def test_defaults(self):
-        msg = baker.make(OutboxMessage, task_name="id_dedup.workflow.tasks.process_batch", payload={"batch_id": "x"})
+    def test_defaults(self, outbox_message_with_payload):
+        msg = outbox_message_with_payload
 
         assert msg.dispatched_at is None
         assert msg.attempts == 0
@@ -90,12 +108,17 @@ class TestOutboxMessage:
 
     def test_max_attempts_reads_settings_at_creation(self, monkeypatch):
         monkeypatch.setattr(settings, "OUTBOX_MAX_ATTEMPTS", 9, raising=False)
+        # Inline, not a fixture: max_attempts is resolved at insert time, so the
+        # row must be created after the setting is patched above.
         assert baker.make(OutboxMessage).max_attempts == 9
 
     def test_max_attempts_falls_back_to_five(self):
+        # Inline alongside the settings test: both exercise the insert-time default.
         assert baker.make(OutboxMessage).max_attempts == 5
 
     def test_zero_max_attempts_rejected(self):
+        # Inline, not a fixture: the IntegrityError fires at insert, outside the
+        # fixture setup phase pytest.raises could wrap.
         with pytest.raises(IntegrityError):
             baker.make(OutboxMessage, max_attempts=0)
 
@@ -149,112 +172,102 @@ class TestBatchRecordSkippedFiles:
 
 @pytest.mark.django_db
 class TestImageStoreEmbedding:
-    def test_persists_embedding_only(self, batch):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
+    def test_persists_embedding_only(self, image):
         embedding = [0.1] * 512
 
-        img.store_embedding(embedding)
+        image.store_embedding(embedding)
 
-        stored = Image.objects.get(pk=img.pk)
+        stored = Image.objects.get(pk=image.pk)
         assert list(stored.embedding) == embedding
         assert stored.cluster_ticket is None
 
-    def test_save_false_leaves_unpersisted(self, batch):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
+    def test_save_false_leaves_unpersisted(self, image):
         embedding = [0.1] * 512
 
-        img.store_embedding(embedding, save=False)
+        image.store_embedding(embedding, save=False)
 
-        assert list(img.embedding) == embedding
-        assert img.updated_at is not None
-        stored = Image.objects.get(pk=img.pk)
+        assert list(image.embedding) == embedding
+        assert image.updated_at is not None
+        stored = Image.objects.get(pk=image.pk)
         assert stored.embedding is None
 
 
 @pytest.mark.django_db
 class TestImageLinkToTicket:
-    def test_persists_ticket_only(self, batch, cluster_review_ticket):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
+    def test_persists_ticket_only(self, image, cluster_review_ticket):
         embedding = [0.1] * 512
-        img.store_embedding(embedding)
+        image.store_embedding(embedding)
 
-        img.link_to_ticket(cluster_review_ticket)
+        image.link_to_ticket(cluster_review_ticket)
 
-        stored = Image.objects.get(pk=img.pk)
+        stored = Image.objects.get(pk=image.pk)
         assert stored.cluster_ticket == cluster_review_ticket
         assert list(stored.embedding) == embedding
 
-    def test_does_not_touch_existing_embedding(self, batch, cluster_review_ticket):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
+    def test_does_not_touch_existing_embedding(self, image, cluster_review_ticket):
+        image.link_to_ticket(cluster_review_ticket)
 
-        img.link_to_ticket(cluster_review_ticket)
-
-        stored = Image.objects.get(pk=img.pk)
+        stored = Image.objects.get(pk=image.pk)
         assert stored.cluster_ticket == cluster_review_ticket
         assert stored.embedding is None
 
-    def test_save_false_leaves_unpersisted(self, batch, cluster_review_ticket):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
+    def test_save_false_leaves_unpersisted(self, image, cluster_review_ticket):
+        image.link_to_ticket(cluster_review_ticket, save=False)
 
-        img.link_to_ticket(cluster_review_ticket, save=False)
-
-        assert img.cluster_ticket == cluster_review_ticket
-        assert img.updated_at is not None
-        stored = Image.objects.get(pk=img.pk)
+        assert image.cluster_ticket == cluster_review_ticket
+        assert image.updated_at is not None
+        stored = Image.objects.get(pk=image.pk)
         assert stored.cluster_ticket is None
 
 
 @pytest.mark.django_db
 class TestImageBulkStoreEmbeddings:
-    def test_persists_embeddings_in_one_write(self, batch):
-        imgs = [baker.make(Image, batch=batch, source_image=f"images/{i}.jpg") for i in range(3)]
-        for i, img in enumerate(imgs):
+    def test_persists_embeddings_in_one_write(self, images):
+        for i, img in enumerate(images):
             img.embedding = [0.1 * i] * 512
 
-        Image.bulk_store_embeddings(imgs)
+        Image.bulk_store_embeddings(images)
 
-        for i, img in enumerate(imgs):
+        for i, img in enumerate(images):
             stored = Image.objects.get(pk=img.pk)
             assert list(stored.embedding) == [0.1 * i] * 512
 
-    def test_bumps_updated_at(self, batch):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
-        Image.objects.filter(pk=img.pk).update(updated_at=timezone.now() - datetime.timedelta(days=1))
-        stale = Image.objects.get(pk=img.pk).updated_at
-        img.embedding = [0.1] * 512
+    def test_bumps_updated_at(self, image):
+        Image.objects.filter(pk=image.pk).update(updated_at=timezone.now() - datetime.timedelta(days=1))
+        stale = Image.objects.get(pk=image.pk).updated_at
+        image.embedding = [0.1] * 512
 
-        Image.bulk_store_embeddings([img])
+        Image.bulk_store_embeddings([image])
 
-        assert Image.objects.get(pk=img.pk).updated_at > stale
+        assert Image.objects.get(pk=image.pk).updated_at > stale
 
 
 @pytest.mark.django_db
 class TestImageBulkLinkToTicket:
-    def test_links_images_without_touching_embedding(self, batch, cluster_review_ticket):
-        imgs = [baker.make(Image, batch=batch, source_image=f"images/{i}.jpg") for i in range(3)]
-        for img in imgs:
+    def test_links_images_without_touching_embedding(self, images, cluster_review_ticket):
+        for img in images:
             img.store_embedding([0.1] * 512)
 
-        Image.bulk_link_to_ticket(cluster_review_ticket, imgs)
+        Image.bulk_link_to_ticket(cluster_review_ticket, images)
 
-        for img in imgs:
+        for img in images:
             stored = Image.objects.get(pk=img.pk)
             assert stored.cluster_ticket == cluster_review_ticket
             assert list(stored.embedding) == [0.1] * 512
 
-    def test_bumps_updated_at(self, batch, cluster_review_ticket):
-        img = baker.make(Image, batch=batch, source_image="images/a.jpg")
-        Image.objects.filter(pk=img.pk).update(updated_at=timezone.now() - datetime.timedelta(days=1))
-        stale = Image.objects.get(pk=img.pk).updated_at
+    def test_bumps_updated_at(self, image, cluster_review_ticket):
+        Image.objects.filter(pk=image.pk).update(updated_at=timezone.now() - datetime.timedelta(days=1))
+        stale = Image.objects.get(pk=image.pk).updated_at
 
-        Image.bulk_link_to_ticket(cluster_review_ticket, [img])
+        Image.bulk_link_to_ticket(cluster_review_ticket, [image])
 
-        assert Image.objects.get(pk=img.pk).updated_at > stale
+        assert Image.objects.get(pk=image.pk).updated_at > stale
 
 
 @pytest.mark.django_db
 class TestImageSourceImageUnique:
     def _create_image(self, tmp_path, name: str) -> Image:
+        # Helper (not a fixture): needs a real file on disk and no batch, so it uses baker.make directly.
         p = tmp_path / name
         p.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
         with p.open("rb") as f:
@@ -266,7 +279,9 @@ class TestImageSourceImageUnique:
         assert Image.objects.count() == 2
 
     def test_duplicate_source_image_rejected(self):
-        # Plain path strings bypass storage uniquification, pinning the DB constraint.
+        # Inline, not a fixture: the second insert must fail, which only works when
+        # the row creation happens inside the test body. Plain path strings bypass
+        # storage uniquification, pinning the DB constraint.
         baker.make(Image, source_image="images/same.jpg")
         with pytest.raises(IntegrityError):
             baker.make(Image, source_image="images/same.jpg")

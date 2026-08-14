@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
-from django.contrib.auth.models import User
 from django.core.files import File
-from model_bakery import baker
 
 from id_dedup.workflow import service as workflow_service
 from id_dedup.workflow.models import (
@@ -19,9 +17,6 @@ from id_dedup.workflow.models import (
 )
 from id_dedup.workflow.tasks import auto_adjudicate_set, process_batch
 
-if TYPE_CHECKING:
-    import pathlib
-
 _JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 16
 _AUTO_ADJUDICATE_TASK = "id_dedup.workflow.tasks.auto_adjudicate_set"
 
@@ -32,15 +27,24 @@ def _unit_vector(seed: int) -> np.ndarray:
     return v / np.linalg.norm(v)
 
 
-def _make_images(batch: Batch, tmp_path: "pathlib.Path", count: int) -> list[Image]:
-    images = []
-    for i in range(count):
-        name = f"img{i}.jpg"
-        path = tmp_path / name
-        path.write_bytes(_JPEG)
-        with path.open("rb") as f:
-            images.append(baker.make(Image, batch=batch, source_image=File(f, name=name)))
-    return images
+@pytest.fixture
+def make_images(image_factory, tmp_path):
+    def _make_images(count: int) -> list[Image]:
+        images = []
+        for i in range(count):
+            name = f"img{i}.jpg"
+            path = tmp_path / name
+            path.write_bytes(_JPEG)
+            with path.open("rb") as f:
+                images.append(image_factory(source_image=File(f, name=name)))
+        return images
+
+    return _make_images
+
+
+@pytest.fixture
+def worker_user(user_factory):
+    return user_factory(username="worker")
 
 
 def _patch_pipeline(
@@ -88,17 +92,10 @@ def _upload_conv(batch: Batch) -> Conversation:
     )
 
 
-def _raise(message: str):
-    def _raiser(*_args, **_kwargs):
-        raise RuntimeError(message)
-
-    return _raiser
-
-
 @pytest.mark.django_db
 class TestProcessBatch:
-    def test_happy_path_mixed_clusters_and_singletons(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 4)
+    def test_happy_path_mixed_clusters_and_singletons(self, monkeypatch, batch, make_images):
+        images = make_images(4)
         _patch_pipeline(monkeypatch, images, labels=[0, 0, -1, -1])
 
         process_batch(str(batch.pk))
@@ -128,9 +125,9 @@ class TestProcessBatch:
         assert conv.summary["singletons"] == 2
         assert set(conv.summary["pending_image_ids"]) == {str(images[2].pk), str(images[3].pk)}
 
-    def test_all_valid_images_persist_embeddings(self, monkeypatch, tmp_path, batch):
+    def test_all_valid_images_persist_embeddings(self, monkeypatch, batch, make_images):
         """Embeddings are persisted at clustering time for every valid image — including singletons."""
-        images = _make_images(batch, tmp_path, 4)
+        images = make_images(4)
         _patch_pipeline(monkeypatch, images, labels=[0, 0, -1, -1])
 
         process_batch(str(batch.pk))
@@ -140,8 +137,8 @@ class TestProcessBatch:
             assert img.embedding is not None, f"{img.source_image.name} lost its embedding"
             assert np.allclose(np.asarray(img.embedding), _unit_vector(i + 1))
 
-    def test_singletons_only(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 3)
+    def test_singletons_only(self, monkeypatch, batch, make_images):
+        images = make_images(3)
         _patch_pipeline(monkeypatch, images, labels=[-1, -1, -1])
 
         process_batch(str(batch.pk))
@@ -152,8 +149,8 @@ class TestProcessBatch:
         assert conv.ended_at is None  # still pending — singletons not yet adjudicated
         assert set(conv.summary["pending_image_ids"]) == {str(i.pk) for i in images}
 
-    def test_all_in_one_cluster_ends_conversation(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 3)
+    def test_all_in_one_cluster_ends_conversation(self, monkeypatch, batch, make_images):
+        images = make_images(3)
         _patch_pipeline(monkeypatch, images, labels=[0, 0, 0])
 
         process_batch(str(batch.pk))
@@ -163,8 +160,8 @@ class TestProcessBatch:
         conv = _upload_conv(batch)
         assert conv.ended_at is not None  # drained — no singletons
 
-    def test_all_failed_ends_conversation(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 3)
+    def test_all_failed_ends_conversation(self, monkeypatch, batch, make_images):
+        images = make_images(3)
         _patch_pipeline(monkeypatch, images, labels=[-1, -1, -1], none_indices={0, 1, 2})
 
         process_batch(str(batch.pk))
@@ -177,10 +174,13 @@ class TestProcessBatch:
         assert conv.summary["failed_images"] == 3
         assert conv.ended_at is not None  # drained — pending set empty
 
-    def test_error_path_sets_error_and_propagates(self, monkeypatch, tmp_path, batch):
-        _make_images(batch, tmp_path, 2)
+    def test_error_path_sets_error_and_propagates(self, monkeypatch, batch, make_images):
+        make_images(2)
 
-        monkeypatch.setattr("id_dedup.workflow.service.extract_embedding", _raise("disk read error"))
+        monkeypatch.setattr(
+            "id_dedup.workflow.service.extract_embedding",
+            Mock(side_effect=RuntimeError("disk read error")),
+        )
 
         with pytest.raises(RuntimeError, match="disk read error"):
             process_batch(str(batch.pk))
@@ -189,10 +189,13 @@ class TestProcessBatch:
         assert conv.error_message
         assert conv.ended_at is not None
 
-    def test_fail_record_failure_does_not_mask_original(self, monkeypatch, tmp_path, batch):
-        _make_images(batch, tmp_path, 2)
+    def test_fail_record_failure_does_not_mask_original(self, monkeypatch, batch, make_images):
+        make_images(2)
 
-        monkeypatch.setattr("id_dedup.workflow.service.extract_embedding", _raise("disk read error"))
+        monkeypatch.setattr(
+            "id_dedup.workflow.service.extract_embedding",
+            Mock(side_effect=RuntimeError("disk read error")),
+        )
 
         def _failing_fail(conversation, message):
             raise RuntimeError("cannot record failure")
@@ -202,8 +205,8 @@ class TestProcessBatch:
         with pytest.raises(RuntimeError, match="disk read error"):
             process_batch(str(batch.pk))
 
-    def test_atomicity_rollback_on_ticket_creation_failure(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 4)
+    def test_atomicity_rollback_on_ticket_creation_failure(self, monkeypatch, batch, make_images):
+        images = make_images(4)
         _patch_pipeline(monkeypatch, images, labels=[0, 0, -1, -1])
 
         should_fail = [True]
@@ -238,11 +241,14 @@ class TestProcessBatch:
         assert conv.error_message == ""
         assert conv.summary["clustering_done"] is True
 
-    def test_retry_after_failure(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 3)
+    def test_retry_after_failure(self, monkeypatch, batch, make_images):
+        images = make_images(3)
 
         # First run: extract fails
-        monkeypatch.setattr("id_dedup.workflow.service.extract_embedding", _raise("disk error"))
+        monkeypatch.setattr(
+            "id_dedup.workflow.service.extract_embedding",
+            Mock(side_effect=RuntimeError("disk error")),
+        )
 
         with pytest.raises(RuntimeError, match="disk error"):
             process_batch(str(batch.pk))
@@ -257,8 +263,8 @@ class TestProcessBatch:
         assert Conversation.objects.count() == 1
         assert ClusterReviewTicket.objects.count() == 1
 
-    def test_idempotent_rerun_after_ticket_batch(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 3)
+    def test_idempotent_rerun_after_ticket_batch(self, monkeypatch, batch, make_images):
+        images = make_images(3)
         _patch_pipeline(monkeypatch, images, labels=[0, 0, 0])
 
         process_batch(str(batch.pk))
@@ -269,8 +275,8 @@ class TestProcessBatch:
         assert ClusterReviewTicket.objects.count() == 1  # no second ticket
         assert OutboxMessage.objects.count() == 0
 
-    def test_idempotent_rerun_singletons_only(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 3)
+    def test_idempotent_rerun_singletons_only(self, monkeypatch, batch, make_images):
+        images = make_images(3)
         _patch_pipeline(monkeypatch, images, labels=[-1, -1, -1])
 
         process_batch(str(batch.pk))
@@ -279,8 +285,8 @@ class TestProcessBatch:
         process_batch(str(batch.pk))
         assert OutboxMessage.objects.count() == 1  # exactly one (R4)
 
-    def test_no_face_image_counted_as_failed(self, monkeypatch, tmp_path, batch):
-        images = _make_images(batch, tmp_path, 4)
+    def test_no_face_image_counted_as_failed(self, monkeypatch, batch, make_images):
+        images = make_images(4)
         _patch_pipeline(monkeypatch, images, labels=[0, 0, -1, -1], none_indices={2})
 
         process_batch(str(batch.pk))
@@ -311,21 +317,20 @@ class TestProcessBatch:
         assert Conversation.objects.count() == 0
         assert OutboxMessage.objects.count() == 0
 
-    def test_user_id_recorded_in_conversation(self, monkeypatch, tmp_path, batch):
-        user = baker.make(User, username="worker")
-        images = _make_images(batch, tmp_path, 3)
+    def test_user_id_recorded_in_conversation(self, monkeypatch, batch, make_images, worker_user):
+        images = make_images(3)
         _patch_pipeline(monkeypatch, images, labels=[-1, -1, -1])
 
-        process_batch(str(batch.pk), user_id=user.pk)
+        process_batch(str(batch.pk), user_id=worker_user.pk)
 
         conv = _upload_conv(batch)
-        assert conv.user == user
+        assert conv.user == worker_user
         msg = OutboxMessage.objects.get()
-        assert msg.payload["user_id"] == user.pk
+        assert msg.payload["user_id"] == worker_user.pk
 
-    def test_singleton_outbox_dispatches_auto_adjudicate(self, monkeypatch, tmp_path, batch):
+    def test_singleton_outbox_dispatches_auto_adjudicate(self, monkeypatch, batch, make_images):
         """The singleton outbox row points at auto_adjudicate_set with the upload conversation id."""
-        images = _make_images(batch, tmp_path, 2)
+        images = make_images(2)
         _patch_pipeline(monkeypatch, images, labels=[-1, -1])
 
         process_batch(str(batch.pk))
@@ -339,9 +344,9 @@ class TestProcessBatch:
 
 @pytest.mark.django_db
 class TestAutoAdjudicateSetStub:
-    def test_stub_does_not_drain_upload_conversation(self, monkeypatch, tmp_path, batch):
+    def test_stub_does_not_drain_upload_conversation(self, monkeypatch, batch, make_images):
         """The stub must not close a conversation whose pending set matches image_ids."""
-        images = _make_images(batch, tmp_path, 2)
+        images = make_images(2)
         _patch_pipeline(monkeypatch, images, labels=[-1, -1])
 
         process_batch(str(batch.pk))
