@@ -34,10 +34,10 @@ class TestClusterReviewTicketQuerySet:
         assert ClusterReviewTicket.objects.closed().count() == 1
 
     def test_close_returns_true_when_claiming_ticket(self, cluster_review_ticket):
-        assert cluster_review_ticket.close() is True
+        assert cluster_review_ticket.close()
 
     def test_close_returns_false_when_already_closed(self, cluster_review_ticket):
         cluster_review_ticket.close()
         cluster_review_ticket.refresh_from_db()
 
-        assert cluster_review_ticket.close() is False
+        assert not cluster_review_ticket.close()

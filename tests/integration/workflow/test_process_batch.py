@@ -116,7 +116,7 @@ class TestProcessBatch:
 
         # Conversation is pending with correct summary
         assert conv.ended_at is None
-        assert conv.summary["clustering_done"] is True
+        assert conv.summary["clustering_done"]
         assert conv.summary["total_images"] == 4
         assert conv.summary["embeddings_extracted"] == 4
         assert conv.summary["failed_images"] == 0
@@ -239,7 +239,7 @@ class TestProcessBatch:
         assert Conversation.objects.count() == 1
         conv.refresh_from_db()
         assert conv.error_message == ""
-        assert conv.summary["clustering_done"] is True
+        assert conv.summary["clustering_done"]
 
     def test_retry_after_failure(self, monkeypatch, batch, make_images):
         images = make_images(3)
@@ -259,7 +259,7 @@ class TestProcessBatch:
 
         conv = _upload_conv(batch)
         assert conv.error_message == ""
-        assert conv.summary["clustering_done"] is True
+        assert conv.summary["clustering_done"]
         assert Conversation.objects.count() == 1
         assert ClusterReviewTicket.objects.count() == 1
 
