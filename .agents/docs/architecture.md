@@ -17,38 +17,61 @@ The workflow app persists state in the DB and tracks work via tickets and conver
 
 ### Models (`workflow/models.py`)
 
-- **`Batch`** — groups image uploads.
-- **`Conversation`** — lifecycle/audit log for a batch. `trigger` is a `Trigger` enum (`upload`, `cluster review`, `adjudication`); queryset filters `pending()` / `completed()` / `errored()`. A `CLUSTER_REVIEW` conversation stores the review outcome in `summary`, including `kept_image_ids`.
+- **`Batch`** — groups image uploads. `skipped_files` records the names of files rejected at upload registration (`record_skipped_files()`), an audit trail — only valid images get rows.
+- **`Conversation`** — lifecycle/audit log for a batch. `trigger` is a `Trigger` enum (`upload`, `cluster review`, `adjudication`); queryset filters `pending()` / `completed()` / `errored()` plus `upload_for_batch()`. Lifecycle methods: `get_or_create_for_upload`, `drain_images` (idempotently removes IDs from `summary.pending_image_ids`), `is_drained`, `close`, `resume` (clears a prior failure, raises `NothingToResume`), `fail`, `mark_clustered`. A `CLUSTER_REVIEW` conversation stores the review outcome in `summary`, including `kept_image_ids` and the pending `pending_image_ids`.
 - **`Identity`** — UUID, `centroid` VectorField 512-d (null until images assigned) with an HNSW cosine index, timestamps. `update_centroid()` recomputes from assigned image embeddings.
-- **`Image`** — UUID, nullable FKs to `Identity`, `ClusterReviewTicket`, and `Batch`, `embedding` VectorField 512-d, `source_image`. HNSW cosine index on `embedding`. A `post_delete` signal refreshes the owning identity's centroid. **Embedding persistence is decoupled from ticket linking**: every image with a detectable face gets its embedding stored in the clustering commit (`_commit_clustering` bulk-updates all valid images — singletons included — before tickets are created); `link_to_ticket()` only adds the ticket edge and never touches `embedding`, `store_embedding()` is the per-row model mutation.
-- **`ClusterReviewTicket`** — UUID, FK→`Batch`, `cluster_label`, `reviewed_by`, `closed_at`. Querysets `.open()` / `.closed()`; `.close(user)` uses an atomic conditional `UPDATE` (DB-level `closed_at IS NULL` guard) so concurrent closers never clobber each other. `is_closed` property.
+- **`Image`** — UUID, nullable FKs to `Identity`, `ClusterReviewTicket`, and `Batch`, `embedding` VectorField 512-d (nullable), `source_image` (unique). HNSW cosine index on `embedding`. A `post_delete` signal refreshes the owning identity's centroid. **Embedding persistence is decoupled from ticket linking**: every image with a detectable face gets its embedding stored in the clustering commit (`_commit_clustering` bulk-updates all valid images — singletons included — before tickets are created); `link_to_ticket()` only adds the ticket edge and never touches `embedding`, `store_embedding()` is the per-row model mutation. Bulk writes go through `register_uploads` (rows + storage commit), `bulk_store_embeddings`, and `bulk_link_to_ticket`; the bulk paths set `updated_at` explicitly since `auto_now` never fires for bulk operations.
+- **`ClusterReviewTicket`** — UUID, FK→`Batch`, `cluster_label`, `reviewed_by`, `closed_at`. Querysets `.open()` / `.closed()`; `.close(user)` uses an atomic conditional `UPDATE` (DB-level `closed_at IS NULL` guard) so concurrent closers never clobber each other. `is_closed` property. Created via the static `new()` factory.
+- **`OutboxMessage`** — durable record of a pending async task dispatch. `task_name` + JSON `payload`, `dispatchable()` queryset (not yet dispatched, not dead-lettered, `attempts < max_attempts`), `attempts`/`max_attempts`/`last_error`/`dead_lettered_at` fields, created via the `new()` factory. See [Durable outbox](#durable-outbox) below.
 
 ### Service (`workflow/service.py`)
 
-- `process_batch(batch_id, user_id)` — orchestrates upload clustering: `_run_clustering` extracts + L2-normalises embeddings for all images with a face, then `_commit_clustering` persists those embeddings for every valid image (singletons included) and calls `create_tickets_from_result`, all in one atomic commit. Adjudication consumers only run after this commit, so the persisted embeddings are available to them.
-- `create_tickets_from_result(result, batch)` — creates one ticket per DBSCAN group (label ≥ 0) and links the batch's images to it (`link_to_ticket`, a graph edge only — embeddings are written earlier in `_commit_clustering`). Singletons (label −1) bypass review. Wrapped in `@transaction.atomic`.
+- `register_upload(uploads, user_id)` — validate files via shared `id_dedup.images.validate_image()`, skip invalid files (names recorded on `batch.skipped_files`), create the `Batch` + `Image` rows (names uniquified), and write the `process_batch` `OutboxMessage` — all atomically. Raises `EmptyBatch` when nothing valid remains.
+- `process_batch(batch_id, user_id)` — orchestrates upload clustering: `_acquire_conversation` locks the batch row and get-or-creates/resumes the `UPLOAD` conversation (`AlreadyClustered` on idempotent redelivery), `_run_clustering` extracts + L2-normalises embeddings for all images with a face, then `_commit_clustering` persists those embeddings for every valid image (singletons included), creates tickets, writes a durable outbox row for the singletons, records the `clustering_done` summary, and evaluates drain — all in one atomic commit. Adjudication consumers only run after this commit, so the persisted embeddings are available to them.
+- `create_tickets_from_result(result, batch)` — creates one ticket per DBSCAN group (label ≥ 0) and links the batch's images to it (`bulk_link_to_ticket`, a graph edge only — embeddings are written earlier in `_commit_clustering`). Singletons (label −1) bypass review. Wrapped in `@transaction.atomic`.
 - `get_kept_image_ids(ticket)` — reads `kept_image_ids` from the ticket's `CLUSTER_REVIEW` conversation summary; empty set while the ticket is open.
-- `submit_ticket_review(ticket, user, kept_ids)` — closes the ticket (recording the reviewer), writes a `CLUSTER_REVIEW` conversation (audit trail incl. kept/discarded counts), and enqueues `auto_adjudicate_set` for the kept survivors via a durable `OutboxMessage`. Raises `TicketAlreadyClosed` if the ticket is already closed.
+- `submit_ticket_review(ticket, user, kept_ids)` — closes the ticket (recording the reviewer), writes a `CLUSTER_REVIEW` conversation (audit trail incl. kept/discarded counts), and enqueues `auto_adjudicate_set` for the kept survivors via a durable `OutboxMessage`. `kept_ids` is normalised to ticket members only (order-preserving, deduplicated) and returned. Raises `TicketAlreadyClosed` if the ticket is already closed or the close lost a race.
+- `close_conversation_if_drained(conversation, drained_ids)` — removes drained IDs from the conversation's pending set and closes it if empty; returns whether this call closed it.
 
 ### Tasks (`workflow/tasks.py`)
 
 - `process_batch(batch_id, user_id)` — thin adapter to `service.process_batch`; swallows `Batch.DoesNotExist`/`AlreadyClustered` as expected signals.
 - `auto_adjudicate_set(image_ids, conversation_id, user_id)` — Celery stub, a placeholder for auto-adjudication of an image set (pgvector matching, identity assignment, adjudication tickets, conversation events). Dispatched via the outbox from `process_batch` (singletons) and `submit_ticket_review` (kept survivors). Not implemented.
-- `dispatch_outbox(limit)` — durable outbox reaper: claims pending `OutboxMessage` rows with `select_for_update(skip_locked)`, sends each task, retries until `max_attempts` then dead-letters. Sweep interval is `OUTBOX_SWEEP_SECONDS` (default 10 s) via Celery beat; also exposed as a management command.
+- `dispatch_outbox(limit)` — durable outbox reaper; see [Durable outbox](#durable-outbox) below.
 
 ### Views (`workflow/views.py`, `workflow/urls.py`)
 
 Mounted at `/workflow/` (`app_name="workflow"`), all `@login_required`:
 
-- `tickets/` → `ticket_list` — open/closed tickets via `?status=` filter.
+- `upload/` → `UploadView` (GET renders the form, POST calls `service.register_upload` and redirects home, surfacing `skipped_files` warnings). The form is plain vanilla JS (drag-drop + file accumulator); no HTMX.
+- `tickets/` → `ticket_list` — open/closed/all tickets via `?status=`, paginated with `?page=` / `?page_size=` (10 or 20) using an elided page range.
 - `tickets/<uuid:pk>/` → `ticket_detail` — shows the cluster's images; disabled form + closed badge once reviewed.
 - `tickets/<uuid:pk>/submit/` → `submit_review` — POSTs `keep` IDs and calls `submit_ticket_review`.
 
-Templates: `workflow/ticket_list.html`, `workflow/ticket_detail.html`. Seed for manual testing: `./manage.py seed_tickets`.
+Templates: `workflow/upload.html`, `workflow/ticket_list.html`, `workflow/ticket_detail.html`, `workflow/_pagination.html`. Seed for manual testing: `./manage.py seed_tickets` (20 open tickets).
+
+---
+
+## Durable outbox
+
+The workflow app's async dispatches never touch the Celery broker from request or service paths. Instead, an `OutboxMessage` row is written **in the same transaction** as the business write (`register_upload`, `_commit_clustering`, `submit_ticket_review`), then a reaper publishes it to the broker.
+
+**`OutboxMessage`** — `task_name` + JSON `payload`, with `dispatched_at`, `attempts`, `max_attempts` (default `OUTBOX_MAX_ATTEMPTS`, 5), `last_error`, and `dead_lettered_at`. The `dispatchable()` queryset selects rows that are not yet dispatched, not dead-lettered, and `attempts < max_attempts`. A check constraint requires `max_attempts >= 1`.
+
+**`dispatch_outbox(limit=50)`** — claims at most `limit` pending rows per sweep via `_dispatch_next`:
+
+- Each row is claimed in its own short transaction with `select_for_update(skip_locked=True)`, so concurrent sweeps never double-claim and a slow broker never holds multi-row locks.
+- `dispatched_at` is set **after** a successful `send_task` (at-least-once: a crash in between leaves the row pending and it is re-sent; the tasks on this outbox tolerate that via idempotency guards).
+- `attempts` counts every dispatch attempt — successes and failures — so attempt history is accurate in the admin.
+- A row whose `send_task` keeps failing is attempted at most once per sweep (interval `OUTBOX_SWEEP_SECONDS`, default 10 s) until `attempts >= max_attempts`, then dead-lettered and never swept again — a broker outage burns one attempt per sweep instead of exhausting the cap in a single run.
+
+Sweeps are scheduled by Celery beat (`CELERY_BEAT_SCHEDULE["dispatch-outbox"]`) and also runnable manually/CI via `./manage.py dispatch_outbox`, which dispatches pending rows by default or takes `--dead` (list dead-lettered rows) / `--requeue-dead` (reset dead-lettered rows for retry).
+
+---
 
 ### DB writes (workflow app)
 
-The workflow app has its own write paths: `create_tickets_from_result` and `submit_ticket_review` both write inside `@transaction.atomic`. These are separate from — and do not reuse — the dedup app's write path.
+The workflow app has its own write paths: `register_upload`, `create_tickets_from_result`, `submit_ticket_review`, and `close_conversation_if_drained` all write inside `@transaction.atomic`. These are separate from — and do not reuse — the dedup app's write path.
 
 ---
 
