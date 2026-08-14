@@ -5,10 +5,9 @@ import numpy as np
 import pytest
 from django.core.files import File
 from django.utils import timezone
-from model_bakery import baker
 
 from id_dedup.ml.pipeline import ClusterMember, ClusterResult
-from id_dedup.workflow.models import Batch, ClusterReviewTicket, Image
+from id_dedup.workflow.models import ClusterReviewTicket, Image
 from id_dedup.workflow.service import create_tickets_from_result
 
 
@@ -135,9 +134,12 @@ class TestCreateTicketsFromResult:
         assert tickets == []
         assert ClusterReviewTicket.objects.count() == 0
 
-    def test_tickets_scoped_to_given_batch(self, batch, register_image):
+    @pytest.fixture
+    def unrelated_batch(self, batch_factory):
+        return batch_factory()
+
+    def test_tickets_scoped_to_given_batch(self, batch, unrelated_batch, register_image):
         img = register_image(batch, "g0a.jpg")
-        other_batch = baker.make(Batch)
 
         result = ClusterResult()
         result.clusters[0] = [_member_for(img, 10)]
@@ -145,4 +147,4 @@ class TestCreateTicketsFromResult:
         create_tickets_from_result(result, batch)
 
         assert ClusterReviewTicket.objects.filter(batch=batch).count() == 1
-        assert ClusterReviewTicket.objects.filter(batch=other_batch).count() == 0
+        assert ClusterReviewTicket.objects.filter(batch=unrelated_batch).count() == 0
