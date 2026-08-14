@@ -7,6 +7,7 @@ from id_dedup.workflow.models import Batch, ClusterReviewTicket, Conversation, I
 class BatchAdmin(admin.ModelAdmin):
     """Admin interface for Batch model."""
 
+    readonly_fields = ("skipped_files",)
     list_display = ("id", "created_at")
 
 
