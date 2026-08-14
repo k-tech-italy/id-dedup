@@ -4,7 +4,6 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.utils import timezone
-from model_bakery import baker
 
 from id_dedup.workflow.models import Batch, Image, OutboxMessage
 from id_dedup.workflow.service import register_upload
@@ -14,13 +13,49 @@ _PROCESS_BATCH_TASK = "id_dedup.workflow.tasks.process_batch"
 _PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 
-def _outbox(task_name: str = "id_dedup.workflow.tasks.process_batch", **kwargs) -> OutboxMessage:
-    return baker.make(OutboxMessage, task_name=task_name, payload={}, **kwargs)
-
-
 def _patch_send_task(monkeypatch, send):
     """Replace current_app.send_task so the reaper never touches the broker."""
     monkeypatch.setattr("id_dedup.workflow.tasks.current_app.send_task", send)
+
+
+@pytest.fixture
+def pending_outbox_message(outbox_message_factory):
+    return outbox_message_factory()
+
+
+@pytest.fixture
+def retryable_outbox_message(outbox_message_factory):
+    return outbox_message_factory(max_attempts=5)
+
+
+@pytest.fixture
+def good_outbox_message(outbox_message_factory):
+    return outbox_message_factory(task_name="good")
+
+
+@pytest.fixture
+def bad_outbox_message(outbox_message_factory):
+    return outbox_message_factory(task_name="bad")
+
+
+@pytest.fixture
+def dead_lettering_outbox_message(outbox_message_factory):
+    return outbox_message_factory(max_attempts=2)
+
+
+@pytest.fixture
+def dispatched_outbox_message(outbox_message_factory):
+    return outbox_message_factory(dispatched_at=timezone.now())
+
+
+@pytest.fixture
+def dead_outbox_message(outbox_message_factory):
+    return outbox_message_factory(
+        max_attempts=1,
+        dead_lettered_at=timezone.now(),
+        last_error="boom",
+        attempts=1,
+    )
 
 
 @pytest.mark.django_db
@@ -48,8 +83,8 @@ class TestRegisterUploadOutbox:
 
 @pytest.mark.django_db
 class TestDispatchOutbox:
-    def test_dispatches_pending_row_and_marks_dispatched_at(self, monkeypatch):
-        msg = _outbox()
+    def test_dispatches_pending_row_and_marks_dispatched_at(self, monkeypatch, pending_outbox_message):
+        msg = pending_outbox_message
         sent = []
 
         def _send(task_name, kwargs):
@@ -63,8 +98,8 @@ class TestDispatchOutbox:
         assert msg.dispatched_at is not None
         assert msg.attempts == 1
 
-    def test_success_counts_attempt_after_prior_failure(self, monkeypatch):
-        msg = _outbox(max_attempts=5)
+    def test_success_counts_attempt_after_prior_failure(self, monkeypatch, retryable_outbox_message):
+        msg = retryable_outbox_message
         calls = {"n": 0}
 
         def _send(task_name, kwargs):
@@ -81,19 +116,22 @@ class TestDispatchOutbox:
         assert msg.attempts == 2
         assert "broker down" in msg.last_error
 
-    def test_already_dispatched_rows_are_not_resent(self, monkeypatch):
-        dispatched = _outbox()
-        dispatched.dispatched_at = timezone.now()
-        dispatched.save(update_fields=["dispatched_at"])
+    def test_already_dispatched_rows_are_not_resent(self, monkeypatch, dispatched_outbox_message):
+        dispatched = dispatched_outbox_message
         _patch_send_task(monkeypatch, lambda task_name, kwargs: None)
 
         assert dispatch_outbox() == 0
         dispatched.refresh_from_db()
         assert dispatched.attempts == 0
 
-    def test_send_failure_records_attempt_and_continues(self, monkeypatch):
-        good = _outbox(task_name="good")
-        bad = _outbox(task_name="bad")
+    def test_send_failure_records_attempt_and_continues(
+        self,
+        monkeypatch,
+        good_outbox_message,
+        bad_outbox_message,
+    ):
+        good = good_outbox_message
+        bad = bad_outbox_message
 
         def _send(task_name, kwargs):
             if task_name == "bad":
@@ -109,8 +147,8 @@ class TestDispatchOutbox:
         assert bad.attempts == 1
         assert "broker down" in bad.last_error
 
-    def test_row_dead_lettered_after_max_attempts(self, monkeypatch):
-        msg = _outbox(max_attempts=2)
+    def test_row_dead_lettered_after_max_attempts(self, monkeypatch, dead_lettering_outbox_message):
+        msg = dead_lettering_outbox_message
         _patch_send_task(monkeypatch, lambda task_name, kwargs: (_ for _ in ()).throw(RuntimeError("down")))
 
         assert dispatch_outbox() == 0
@@ -123,8 +161,8 @@ class TestDispatchOutbox:
         assert msg.attempts == 2
         assert msg.dead_lettered_at is not None
 
-    def test_dead_lettered_row_is_never_swept_again(self, monkeypatch):
-        msg = _outbox(max_attempts=2)
+    def test_dead_lettered_row_is_never_swept_again(self, monkeypatch, dead_lettering_outbox_message):
+        msg = dead_lettering_outbox_message
         _patch_send_task(monkeypatch, lambda task_name, kwargs: (_ for _ in ()).throw(RuntimeError("down")))
 
         dispatch_outbox()
@@ -145,8 +183,7 @@ class TestDispatchOutbox:
 
 @pytest.mark.django_db
 class TestDispatchOutboxCommand:
-    def test_command_dispatches_and_reports_count(self, monkeypatch, capsys):
-        _outbox()
+    def test_command_dispatches_and_reports_count(self, monkeypatch, capsys, pending_outbox_message):
         _patch_send_task(monkeypatch, lambda task_name, kwargs: None)
 
         call_command("dispatch_outbox")
@@ -154,12 +191,8 @@ class TestDispatchOutboxCommand:
         out = capsys.readouterr().out
         assert "Dispatched 1 message(s)" in out
 
-    def test_command_dead_lists_dead_rows(self, capsys):
-        dead = _outbox(max_attempts=1)
-        dead.dead_lettered_at = timezone.now()
-        dead.last_error = "boom"
-        dead.attempts = 1
-        dead.save(update_fields=["dead_lettered_at", "last_error", "attempts"])
+    def test_command_dead_lists_dead_rows(self, capsys, dead_outbox_message):
+        dead = dead_outbox_message
 
         call_command("dispatch_outbox", "--dead")
 
@@ -167,12 +200,8 @@ class TestDispatchOutboxCommand:
         assert str(dead.pk) in out
         assert "boom" in out
 
-    def test_command_requeue_dead_resets_dead_rows(self):
-        dead = _outbox(max_attempts=1)
-        dead.dead_lettered_at = timezone.now()
-        dead.last_error = "boom"
-        dead.attempts = 1
-        dead.save(update_fields=["dead_lettered_at", "last_error", "attempts"])
+    def test_command_requeue_dead_resets_dead_rows(self, dead_outbox_message):
+        dead = dead_outbox_message
 
         call_command("dispatch_outbox", "--requeue-dead")
 

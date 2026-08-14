@@ -1,8 +1,10 @@
 import pytest
 from django.urls import reverse
-from model_bakery import baker
 
-from id_dedup.workflow.models import Batch, ClusterReviewTicket
+
+@pytest.fixture
+def create_tickets(cluster_review_ticket_factory):
+    return lambda count: cluster_review_ticket_factory(_quantity=count)
 
 
 @pytest.mark.django_db
@@ -11,9 +13,6 @@ class TestTicketListView:
         base_url = reverse("workflow:ticket_list")
         query = f"?status={status}" if status else ""
         return f"{base_url}{query}"
-
-    def _create_tickets(self, count: int) -> None:
-        baker.make(ClusterReviewTicket, batch=baker.make(Batch), _quantity=count)
 
     def test_anonymous_user_redirected_to_login(self, client):
         response = client.get(self._url())
@@ -78,35 +77,35 @@ class TestTicketListView:
         response = logged_in_client.get(f"{self._url()}?page_size=50")
         assert response.context["page_size"] == "10"
 
-    def test_first_page_contains_10_tickets(self, logged_in_client):
-        self._create_tickets(15)
+    def test_first_page_contains_10_tickets(self, logged_in_client, create_tickets):
+        create_tickets(15)
         response = logged_in_client.get(self._url())
         assert len(response.context["tickets"]) == 10
         assert response.context["page_obj"].number == 1
         assert response.context["page_obj"].paginator.num_pages == 2
 
-    def test_page_size_20_fits_all_on_one_page(self, logged_in_client):
-        self._create_tickets(15)
+    def test_page_size_20_fits_all_on_one_page(self, logged_in_client, create_tickets):
+        create_tickets(15)
         response = logged_in_client.get(f"{self._url()}?page_size=20")
         assert len(response.context["tickets"]) == 15
         assert response.context["page_obj"].paginator.num_pages == 1
 
-    def test_out_of_range_page_returns_last_page(self, logged_in_client):
-        self._create_tickets(15)
+    def test_out_of_range_page_returns_last_page(self, logged_in_client, create_tickets):
+        create_tickets(15)
         response = logged_in_client.get(f"{self._url()}?page=99")
         assert response.context["page_obj"].number == 2
 
-    def test_non_numeric_page_returns_first_page(self, logged_in_client):
-        self._create_tickets(15)
+    def test_non_numeric_page_returns_first_page(self, logged_in_client, create_tickets):
+        create_tickets(15)
         response = logged_in_client.get(f"{self._url()}?page=abc")
         assert response.context["page_obj"].number == 1
 
-    def test_elided_page_range_for_middle_page(self, logged_in_client):
-        self._create_tickets(120)
+    def test_elided_page_range_for_middle_page(self, logged_in_client, create_tickets):
+        create_tickets(120)
         response = logged_in_client.get(f"{self._url()}?page=6")
         assert response.context["page_range"] == [1, "…", 5, 6, 7, "…", 12]
 
-    def test_no_elision_when_few_pages(self, logged_in_client):
-        self._create_tickets(15)
+    def test_no_elision_when_few_pages(self, logged_in_client, create_tickets):
+        create_tickets(15)
         response = logged_in_client.get(self._url())
         assert list(response.context["page_range"]) == [1, 2]
