@@ -25,24 +25,24 @@ def pair_pending_conversation(conversation_factory):
 
 class TestConversationIsDrained:
     def test_empty_pending_set(self, empty_pending_conversation):
-        assert empty_pending_conversation.is_drained() is True
+        assert empty_pending_conversation.is_drained()
 
     def test_non_empty_pending_set(self, single_pending_conversation):
-        assert single_pending_conversation.is_drained() is False
+        assert not single_pending_conversation.is_drained()
 
     def test_missing_key_is_drained(self, conversation):
-        assert conversation.is_drained() is True
+        assert conversation.is_drained()
 
 
 class TestConversationClose:
     def test_close_returns_true(self, conversation):
-        assert conversation.close() is True
+        assert conversation.close()
         conversation.refresh_from_db()
         assert conversation.ended_at is not None
 
     def test_close_returns_false_when_already_closed(self, conversation):
         conversation.close()
-        assert conversation.close() is False
+        assert not conversation.close()
 
     def test_close_refreshes_instance(self, conversation):
         assert conversation.ended_at is None

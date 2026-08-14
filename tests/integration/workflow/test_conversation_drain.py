@@ -65,7 +65,7 @@ class TestConversationResume:
     def test_resume_preserves_existing_summary(self, errored_clustered_conversation):
         errored_clustered_conversation.resume()
         errored_clustered_conversation.refresh_from_db()
-        assert errored_clustered_conversation.summary["clustering_done"] is True
+        assert errored_clustered_conversation.summary["clustering_done"]
 
 
 @pytest.mark.django_db
@@ -94,7 +94,7 @@ class TestConversationMarkClustered:
     def test_sets_clustering_done(self, conversation):
         conversation.mark_clustered({"batch_id": "x"})
         conversation.refresh_from_db()
-        assert conversation.summary["clustering_done"] is True
+        assert conversation.summary["clustering_done"]
 
     def test_replaces_summary_dict(self, old_summary_conversation):
         old_summary_conversation.mark_clustered({"batch_id": "x", "total_images": 4})
@@ -102,7 +102,7 @@ class TestConversationMarkClustered:
         assert "old_key" not in old_summary_conversation.summary
         assert old_summary_conversation.summary["batch_id"] == "x"
         assert old_summary_conversation.summary["total_images"] == 4
-        assert old_summary_conversation.summary["clustering_done"] is True
+        assert old_summary_conversation.summary["clustering_done"]
 
     def test_does_not_set_ended_at(self, conversation):
         conversation.mark_clustered({"batch_id": "x"})
