@@ -18,11 +18,15 @@ def _unit_vector(seed: int) -> np.ndarray:
     return v / np.linalg.norm(v)
 
 
-def _register_image(batch: Batch, tmp_path: pathlib.Path, name: str) -> Image:
-    path = tmp_path / name
-    path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
-    with path.open("rb") as f:
-        return baker.make(Image, batch=batch, source_image=File(f, name=name))
+@pytest.fixture
+def register_image(tmp_path, image_factory):
+    def _make(batch, name, **kwargs):
+        path = tmp_path / name
+        path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
+        with path.open("rb") as f:
+            return image_factory(batch=batch, source_image=File(f, name=name), **kwargs)
+
+    return _make
 
 
 def _member_for(image: Image, seed: int) -> ClusterMember:
@@ -31,10 +35,10 @@ def _member_for(image: Image, seed: int) -> ClusterMember:
 
 @pytest.mark.django_db
 class TestCreateTicketsFromResult:
-    def test_two_groups_yields_two_tickets(self, tmp_path, batch):
-        g0a = _register_image(batch, tmp_path, "g0a.jpg")
-        g0b = _register_image(batch, tmp_path, "g0b.jpg")
-        g1a = _register_image(batch, tmp_path, "g1a.jpg")
+    def test_two_groups_yields_two_tickets(self, batch, register_image):
+        g0a = register_image(batch, "g0a.jpg")
+        g0b = register_image(batch, "g0b.jpg")
+        g1a = register_image(batch, "g1a.jpg")
 
         result = ClusterResult()
         result.clusters[0] = [_member_for(g0a, 10), _member_for(g0b, 11)]
@@ -46,9 +50,9 @@ class TestCreateTicketsFromResult:
         assert ClusterReviewTicket.objects.filter(batch=batch).count() == 2
         assert {t.cluster_label for t in tickets} == {0, 1}
 
-    def test_links_registered_images_no_new_rows(self, tmp_path, batch):
-        g0a = _register_image(batch, tmp_path, "g0a.jpg")
-        g0b = _register_image(batch, tmp_path, "g0b.jpg")
+    def test_links_registered_images_no_new_rows(self, batch, register_image):
+        g0a = register_image(batch, "g0a.jpg")
+        g0b = register_image(batch, "g0b.jpg")
 
         result = ClusterResult()
         result.clusters[0] = [_member_for(g0a, 10), _member_for(g0b, 11)]
@@ -58,9 +62,9 @@ class TestCreateTicketsFromResult:
         assert Image.objects.count() == 2
         assert Image.objects.filter(cluster_ticket=tickets[0]).count() == 2
 
-    def test_links_ticket_without_touching_embedding(self, tmp_path, batch):
+    def test_links_ticket_without_touching_embedding(self, batch, register_image):
         """Ticket linking is a graph edge only — embeddings are written earlier in the clustering commit."""
-        img = _register_image(batch, tmp_path, "g0a.jpg")
+        img = register_image(batch, "g0a.jpg")
         member = _member_for(img, 10)
 
         result = ClusterResult()
@@ -72,8 +76,8 @@ class TestCreateTicketsFromResult:
         assert img.cluster_ticket is not None
         assert img.embedding is None
 
-    def test_updated_at_bumped(self, tmp_path, batch):
-        img = _register_image(batch, tmp_path, "g0a.jpg")
+    def test_updated_at_bumped(self, batch, register_image):
+        img = register_image(batch, "g0a.jpg")
         Image.objects.filter(pk=img.pk).update(updated_at=timezone.now() - timedelta(days=1))
         stale = Image.objects.get(pk=img.pk).updated_at
 
@@ -85,9 +89,9 @@ class TestCreateTicketsFromResult:
         img.refresh_from_db()
         assert img.updated_at > stale
 
-    def test_singletons_produce_no_tickets_and_untouched(self, tmp_path, batch):
-        s0 = _register_image(batch, tmp_path, "s0.jpg")
-        s1 = _register_image(batch, tmp_path, "s1.jpg")
+    def test_singletons_produce_no_tickets_and_untouched(self, batch, register_image):
+        s0 = register_image(batch, "s0.jpg")
+        s1 = register_image(batch, "s1.jpg")
 
         result = ClusterResult()
         result.clusters[-1] = [_member_for(s0, 30), _member_for(s1, 31)]
@@ -101,9 +105,9 @@ class TestCreateTicketsFromResult:
             assert img.cluster_ticket is None
             assert img.embedding is None
 
-    def test_ungrouped_registered_image_untouched(self, tmp_path, batch):
-        g0a = _register_image(batch, tmp_path, "g0a.jpg")
-        lone = _register_image(batch, tmp_path, "lone.jpg")
+    def test_ungrouped_registered_image_untouched(self, batch, register_image):
+        g0a = register_image(batch, "g0a.jpg")
+        lone = register_image(batch, "lone.jpg")
 
         result = ClusterResult()
         result.clusters[0] = [_member_for(g0a, 10)]
@@ -131,8 +135,8 @@ class TestCreateTicketsFromResult:
         assert tickets == []
         assert ClusterReviewTicket.objects.count() == 0
 
-    def test_tickets_scoped_to_given_batch(self, tmp_path, batch):
-        img = _register_image(batch, tmp_path, "g0a.jpg")
+    def test_tickets_scoped_to_given_batch(self, batch, register_image):
+        img = register_image(batch, "g0a.jpg")
         other_batch = baker.make(Batch)
 
         result = ClusterResult()
