@@ -79,11 +79,11 @@ Wraps `propose_for_members` over an entire `ClusterResult`. Emits proposals for 
 
 `workflow.py` bridges the ML pipeline and ORM persistence. It imports both `pipeline` and `models` — the only module that does so.
 
-**`_is_allowed_image(f)`**
-Validates uploaded files by reading the first 12 bytes and checking magic numbers for JPEG (`FF D8 FF`), PNG (`89 50 4E 47`), and WEBP (`RIFF....WEBP`). Returns `False` for unsupported types. `process_uploads` raises `ValueError` if any file is rejected.
+**`validate_image(uploaded)`** (from `id_dedup/images.py`, shared with the workflow app)
+Validates an uploaded file by reading its first 12 bytes and checking magic numbers for JPEG (`FF D8 FF`), PNG (`89 50 4E 47`), and WEBP (`RIFF....WEBP`); rewinds the stream before returning. Raises `UnsupportedImageType` for unsupported types. `process_uploads` raises `UnsupportedImageType` if any file is rejected.
 
 **`process_uploads(uploads, tmpdir, default_file_name="image")`**
-Validates uploaded file types via `_is_allowed_image`, saves files to a temp directory with unique names, then calls `pipeline.process_images()`. Returns the `ClusterResult`.
+Validates uploaded file types via `validate_image` (from `id_dedup/images.py`), raises `UnsupportedImageType` listing rejected names if any file fails, saves files to a temp directory with unique names, then calls `pipeline.process_images()`. Returns the `ClusterResult`.
 
 **`apply_split(result, cluster_label, filenames=None, file_path=None, to_cluster=None)`**
 Resolves file paths from filenames or a direct path, then delegates to `result.split()`. Returns the mutated `ClusterResult`.

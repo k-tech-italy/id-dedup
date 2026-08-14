@@ -21,6 +21,7 @@ tests/
   examples/
     person1/ … person4/     real face photos used by pipeline integration fixtures
   unit/
+    test_images.py        validate_image / UnsupportedImageType (magic-byte detection, stream rewind)
     wizard/
       conftest.py           synthetic, DB-free unit fixtures (query_centroid, unit_member,
                             two_member_group, cluster_result_with_groups, strong_and_weak_match, close_matches)
@@ -33,13 +34,18 @@ tests/
       test_serializers.py   round-trip serialize/deserialize for all data structures
   integration/
     conftest.py             logged_in_client (DB-backed test client fixture, uses model-bakery)
+    config/
+      test_settings.py      outbox beat schedule uses OUTBOX_SWEEP_SECONDS
     wizard/
       test_views_wizard.py  4-step wizard view tests (session helpers _setup_result, _setup_proposals, _make_identity)
       test_views_landing.py landing page and dashboard tests
       test_views_auth.py    login/logout view tests
     workflow/
-      conftest.py           model-bakery instance fixtures (batch, cluster_review_ticket, closed_cluster_review_ticket)
-      test_workflow_models.py      Batch, Conversation, Identity, Image, ClusterReviewTicket model behaviour
+      conftest.py           global model-bakery *factory fixtures + derived instance fixtures
+                            (batch_factory, image_factory, linked_image_factory, cluster_review_ticket_factory,
+                            conversation_factory, user_factory, outbox_message_factory; batch,
+                            cluster_review_ticket, closed_cluster_review_ticket)
+      test_workflow_models.py      Batch, Conversation, Identity, Image, ClusterReviewTicket, OutboxMessage model behaviour
       test_models_conversation.py  Conversation is_drained/close/drain_images
       test_conversation_drain.py   Conversation resume/fail/mark_clustered
       test_create_tickets.py       create_tickets_from_result
@@ -47,11 +53,11 @@ tests/
       test_submit_review.py        submit_ticket_review
       test_service_close_drained.py  close_conversation_if_drained
       test_ticket_models.py        ClusterReviewTicket querysets and .close()
-      test_ticket_list_view.py     ticket_list view
+      test_ticket_list_view.py     ticket_list view (status filter + pagination)
       test_ticket_detail_view.py   ticket_detail view
       test_upload_view.py          upload view + register_upload
       test_process_batch.py        process_batch + auto_adjudicate_set stub
-      test_outbox.py               OutboxMessage + dispatch_outbox
+      test_outbox.py               OutboxMessage + dispatch_outbox + management command
 ```
 
 ---
@@ -229,21 +235,33 @@ HTMX redirect responses carry an `HX-Redirect` header; the Django test client ex
 
 ## Integration tests
 
-`tests/integration/` requires a live PostgreSQL + pgvector instance (`DATABASE_URL`) and, for the submit-review path, a reachable Redis broker. Keep these separate from the DB-free unit tests under `tests/unit/`.
+`tests/integration/` requires a live PostgreSQL + pgvector instance (`DATABASE_URL`). No Redis broker is needed: async dispatches are asserted as `OutboxMessage` rows, and the outbox dispatch tests monkeypatch `send_task`. Keep these separate from the DB-free unit tests under `tests/unit/`.
 
 ### Model-bakery
 
 All row creation in integration tests goes through `model-bakery` — never `Model.objects.create(...)` or `.create_user(...)`. This keeps fixtures compact and lets overrides ride on `**kwargs`.
 
-#### `_factory` and instance fixtures
+#### Global factory fixtures + local instance fixtures
 
-`tests/integration/workflow/conftest.py` defines a private `_factory(model, **defaults)` helper that creates a new instance via `baker.make(model, **defaults)`. It is used internally to build the **instance fixtures** — fixtures that hand back a ready object, not a callable:
+`tests/integration/workflow/conftest.py` follows a **global factories + local fixtures** model. It defines a private `_factory(model, **defaults)` helper that returns a `_make(**kwargs)` callable merging `defaults` with per-call kwargs, then exposes one **factory fixture** per model. Module-local fixtures (or tests) call those factories with their own overrides rather than `baker.make` directly:
+
+| Factory fixture | Defaults | Returns |
+|---|---|---|
+| `batch_factory` | — | a `_make(**kwargs)` producing a `Batch` |
+| `image_factory(batch)` | `batch` | a `_make(**kwargs)` producing an `Image` |
+| `linked_image_factory(image_factory, cluster_review_ticket)` | `batch=ticket.batch, cluster_ticket=ticket` | a `_make(tmp_path, name, **kwargs)` writing a real file and producing a ticket-linked `Image` |
+| `cluster_review_ticket_factory(batch)` | `cluster_label=0, batch` | a `_make(**kwargs)` producing a `ClusterReviewTicket` |
+| `conversation_factory` | `trigger=Trigger.UPLOAD` | a `_make(**kwargs)` producing a `Conversation` |
+| `user_factory` | — | a `_make(**kwargs)` producing a `User` |
+| `outbox_message_factory` | `task_name=process_batch`, `payload=dict` | a `_make(**kwargs)` producing an `OutboxMessage` |
+
+A few convenience **instance fixtures** hand back a ready object, not a callable — enough for tests that need a single canonical object:
 
 | Fixture | Returns |
 |---|---|
-| `batch` | a new `Batch` |
+| `batch` | a new `Batch` (via `batch_factory`) |
 | `cluster_review_ticket` | an open `ClusterReviewTicket` (`cluster_label=0`) in that batch |
-| `closed_cluster_review_ticket` | a closed `ClusterReviewTicket` in that batch |
+| `closed_cluster_review_ticket` | a closed `ClusterReviewTicket` (`cluster_label=1`, `closed_at` set) in that batch |
 
 `cluster_review_ticket` and `closed_cluster_review_ticket` share the same function-scoped `batch`, matching tests that pair an open and closed ticket in one batch.
 
@@ -256,41 +274,32 @@ def test_open_returns_tickets_without_closed_at(self, cluster_review_ticket, clo
 
 Code reused across several tests *within one file* stays in that file — either as a module-local fixture or a helper, depending on whether the shape varies:
 
-- **Module-local fixture** — when many tests need the same object and its data structure doesn't change. Example: the conversation state fixtures in `test_workflow_models.py`:
+- **Module-local fixture** — when many tests need the same object and its data structure doesn't change. Compose the global factory fixture with the required overrides rather than calling `baker.make` directly. Example: the conversation state fixtures in `test_workflow_models.py`:
 
   ```python
   @pytest.fixture
-  def open_conversation():
-      return baker.make(Conversation, trigger=Trigger.UPLOAD, summary={})
+  def open_conversation(conversation_factory):
+      return conversation_factory(trigger=Trigger.UPLOAD, summary={})
 
   @pytest.fixture
-  def completed_conversation():
-      return baker.make(Conversation, trigger=Trigger.UPLOAD, summary={}, ended_at=timezone.now())
+  def completed_conversation(conversation_factory):
+      return conversation_factory(trigger=Trigger.UPLOAD, summary={}, ended_at=timezone.now())
 
   @pytest.fixture
-  def errored_conversation():
-      return baker.make(Conversation, trigger=Trigger.UPLOAD, summary={}, error_message="oops")
+  def errored_conversation(conversation_factory):
+      return conversation_factory(trigger=Trigger.UPLOAD, summary={}, error_message="oops")
   ```
 
-  Use `baker.make` inside the fixture (as above) — not `_factory(...)()`, since `_factory` is just `baker.make` and would add indirection without value.
-
-- **Module-local `_make_*` helper** — when per-call variations are needed (each test supplies different fields). The established patterns: `_make_image(batch, ticket, name)`, `_make_conversation(summary=None, **kwargs)`, `_outbox(...)`, and the wizard's `_make_identity(**kwargs)`:
-
-  ```python
-  def _make_conversation(summary: dict | None = None, **kwargs) -> Conversation:
-      return baker.make(Conversation, trigger=Trigger.UPLOAD, summary=summary or {}, **kwargs)
-  ```
-
-  `summary=None` defaults to `{}` (not `None`) because `baker.make` would generate a value for the JSONField otherwise, and `summary: dict = {}` trips `B006`.
+- **Module-local `_make_*` helper** — when per-call variations are needed (each test supplies different fields). Established patterns: `make_images(count)` in `test_process_batch.py`, `_submit_review(client, ticket, keep)` in `test_submit_review.py`, `_create_image(tmp_path, name)` in `test_workflow_models.py`, and the wizard's `_make_identity(**kwargs)`. A fixture that still needs `baker.make` directly is only justified when a factory fixture can't express it (e.g. rows that must be created inline, like `baker.make(OutboxMessage, max_attempts=0)` inside a `pytest.raises`).
 
 #### Variants and multiples
 
-When a test needs a second object or an override (instance fixtures can't express those), call `baker.make` inline:
+When a test needs a second object or an override (instance fixtures can't express those), call the factory or `baker.make` inline:
 
 ```python
 other_batch = baker.make(Batch)
-ticket = baker.make(ClusterReviewTicket, batch=batch, cluster_label=1)
+ticket = cluster_review_ticket_factory(cluster_label=1)
 _created = baker.make(Image, batch=batch, cluster_ticket=ticket, _quantity=120)  # or _quantity for several
 ```
 
-Users are created with `baker.make(User, username="testuser")` + `set_password(...)` + `save()` so `client.login` works against the hashed password.
+Users are created with `baker.make(User, username="testuser")` + `set_password(...)` + `save()` so `client.login` works against the hashed password (see `tests/integration/conftest.py`'s `user`/`logged_in_client`).
