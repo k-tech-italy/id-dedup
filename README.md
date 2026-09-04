@@ -86,6 +86,23 @@ Navigate to `http://localhost:8000/wizard/upload/` to start a deduplication batc
 3. **Adjudication** — for each cluster, accept a proposed identity match, search for an existing one, or create a new identity.
 4. **Complete** — confirm; images and embeddings are saved to the database.
 
+## Documentation
+
+**<https://k-tech-italy.github.io/id-dedup/>** — published from `develop` on every change.
+
+The sources live in [`docs/`](docs/) and are built with
+[properdocs](https://pypi.org/project/properdocs/):
+
+```shell
+uv sync --group docs
+make docs-serve   # live reload on http://127.0.0.1:8001
+make docs         # build into .build/docs
+```
+
+The top level is product-facing — what it does and how to use it. Everything technical
+(setup, architecture, testing, and the model and settings reference) lives under
+**Development Guide**.
+
 ## Development
 
 ```shell

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 260" role="img"
+     aria-label="Embeddings scattered in vector space on the left, grouped into three clusters and two singletons on the right">
+  <defs>
+    <marker id="cArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#94A3B8"/>
+    </marker>
+    <style>
+      .panel { fill: none; stroke: #94A3B8; stroke-width: 1.5; stroke-dasharray: 5 6; opacity: .55; }
+      .cap   { font: 600 13px system-ui, sans-serif; fill: #94A3B8; }
+      .tag   { font: 700 11px system-ui, sans-serif; fill: #fff; }
+    </style>
+  </defs>
+
+  <rect class="panel" x="12" y="14" width="300" height="204" rx="14"/>
+  <text class="cap" x="162" y="242" text-anchor="middle">every face is a point in 512-d space</text>
+  <g fill="#94A3B8">
+    <circle cx="72"  cy="62"  r="8"/><circle cx="118" cy="48"  r="8"/><circle cx="96"  cy="92" r="8"/>
+    <circle cx="212" cy="70"  r="8"/><circle cx="248" cy="98"  r="8"/>
+    <circle cx="70"  cy="164" r="8"/><circle cx="112" cy="182" r="8"/><circle cx="88" cy="140" r="8"/>
+    <circle cx="196" cy="168" r="8"/>
+    <circle cx="160" cy="118" r="8"/><circle cx="266" cy="176" r="8"/>
+  </g>
+
+  <line x1="330" y1="116" x2="382" y2="116" stroke="#94A3B8" stroke-width="2.5"
+        marker-end="url(#cArrow)" opacity=".7"/>
+  <text class="cap" x="356" y="100" text-anchor="middle">DBSCAN</text>
+
+  <rect class="panel" x="404" y="14" width="344" height="204" rx="14"/>
+  <text class="cap" x="576" y="242" text-anchor="middle">near neighbours become one cluster</text>
+
+  <!-- Cluster A -->
+  <ellipse cx="484" cy="70" rx="56" ry="42" fill="#6366F1" fill-opacity=".13" stroke="#818CF8" stroke-width="1.5"/>
+  <g fill="#6366F1">
+    <circle cx="464" cy="58" r="8"/><circle cx="504" cy="52" r="8"/><circle cx="482" cy="88" r="8"/>
+  </g>
+  <rect x="452" y="106" width="64" height="18" rx="9" fill="#6366F1"/>
+  <text class="tag" x="484" y="119" text-anchor="middle">ticket</text>
+
+  <!-- Cluster B -->
+  <ellipse cx="620" cy="76" rx="48" ry="36" fill="#14B8A6" fill-opacity=".13" stroke="#2DD4BF" stroke-width="1.5"/>
+  <g fill="#14B8A6"><circle cx="606" cy="66" r="8"/><circle cx="638" cy="86" r="8"/></g>
+  <rect x="588" y="106" width="64" height="18" rx="9" fill="#14B8A6"/>
+  <text class="tag" x="620" y="119" text-anchor="middle">ticket</text>
+
+  <!-- Cluster C -->
+  <ellipse cx="500" cy="172" rx="58" ry="40" fill="#F59E0B" fill-opacity=".13" stroke="#FBBF24" stroke-width="1.5"/>
+  <g fill="#F59E0B">
+    <circle cx="478" cy="162" r="8"/><circle cx="516" cy="156" r="8"/><circle cx="502" cy="190" r="8"/>
+  </g>
+  <rect x="468" y="204" width="64" height="18" rx="9" fill="#F59E0B"/>
+  <text class="tag" x="500" y="217" text-anchor="middle">ticket</text>
+
+  <!-- Singletons -->
+  <g fill="#94A3B8"><circle cx="646" cy="168" r="8"/><circle cx="700" cy="190" r="8"/></g>
+  <rect x="620" y="204" width="106" height="18" rx="9" fill="#94A3B8"/>
+  <text class="tag" x="673" y="217" text-anchor="middle">no review needed</text>
+</svg>

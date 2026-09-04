@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" role="img"
+     aria-label="A review ticket: five clustered images, three kept and two unticked as intruders">
+  <defs>
+    <style>
+      .h    { font: 700 15px system-ui, sans-serif; fill: #818CF8; }
+      .q    { font: 600 13px system-ui, sans-serif; fill: #94A3B8; }
+      .cap  { font: 700 11px system-ui, sans-serif; fill: #fff; }
+      .out  { font: 600 12px system-ui, sans-serif; fill: #94A3B8; }
+    </style>
+    <symbol id="tface" viewBox="0 0 40 48">
+      <rect x="1" y="1" width="38" height="46" rx="6" fill="currentColor" opacity=".18"/>
+      <rect x="1" y="1" width="38" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="2"/>
+      <circle cx="20" cy="18" r="7.5" fill="currentColor"/>
+      <path d="M6.5 42a13.5 13.5 0 0 1 27 0Z" fill="currentColor"/>
+    </symbol>
+  </defs>
+
+  <rect x="12" y="12" width="736" height="276" rx="16" fill="#6366F1" fill-opacity=".06"
+        stroke="#818CF8" stroke-width="2"/>
+  <rect x="36" y="34" width="132" height="22" rx="11" fill="#6366F1"/>
+  <text class="cap" x="102" y="49" text-anchor="middle">cluster review</text>
+  <text class="h" x="36" y="86">Which of these are the same person?</text>
+  <text class="q" x="36" y="108">Tick the ones that belong. Leave the intruders alone.</text>
+
+  <!-- Kept -->
+  <g color="#6366F1">
+    <use href="#tface" x="40"  y="130" width="72" height="86"/>
+    <use href="#tface" x="132" y="130" width="72" height="86"/>
+    <use href="#tface" x="224" y="130" width="72" height="86"/>
+  </g>
+  <g fill="#6366F1">
+    <circle cx="100" cy="140" r="13"/><circle cx="192" cy="140" r="13"/><circle cx="284" cy="140" r="13"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m94 140 4 4 8-8"/><path d="m186 140 4 4 8-8"/><path d="m278 140 4 4 8-8"/>
+  </g>
+  <rect x="40" y="228" width="256" height="24" rx="12" fill="#6366F1"/>
+  <text class="cap" x="168" y="244" text-anchor="middle">kept — go on to adjudication</text>
+
+  <!-- Discarded -->
+  <g color="#94A3B8">
+    <use href="#tface" x="392" y="130" width="72" height="86"/>
+    <use href="#tface" x="484" y="130" width="72" height="86"/>
+  </g>
+  <g fill="none" stroke="#94A3B8" stroke-width="2.4">
+    <circle cx="452" cy="140" r="12"/><circle cx="544" cy="140" r="12"/>
+  </g>
+  <rect x="392" y="228" width="164" height="24" rx="12" fill="#94A3B8"/>
+  <text class="cap" x="474" y="244" text-anchor="middle">not this person</text>
+
+  <!-- Outcome -->
+  <path d="M596 130v122" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 5" opacity=".6"/>
+  <text class="out" x="612" y="150">On submit:</text>
+  <text class="out" x="612" y="174">· ticket closes</text>
+  <text class="out" x="612" y="196">· you are recorded</text>
+  <text class="out" x="612" y="218">  as the reviewer</text>
+  <text class="out" x="612" y="244">· kept images move on</text>
+</svg>

@@ -1,0 +1,7 @@
+nav:
+  - Overview: index.md
+  - Setup: setup.md
+  - Architecture: architecture.md
+  - Testing: testing.md
+  - Frontend: frontend.md
+  - Reference: reference

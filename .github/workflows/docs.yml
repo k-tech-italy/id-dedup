@@ -1,0 +1,92 @@
+name: Documentation
+
+# Builds the properdocs site on every change that can affect it, and publishes
+# it to GitHub Pages from `develop`. Pull requests build but never deploy, so a
+# broken link is caught before it is merged rather than after it is live.
+#
+# Requires GitHub Pages to be enabled for the repository with
+# Settings → Pages → Build and deployment → Source: "GitHub Actions".
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'docs/**'
+      - 'properdocs.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - 'docs/**'
+      - 'properdocs.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two Pages deployments race. Queue instead of cancelling: cancelling
+# a half-finished deployment can leave the live site on a stale artifact.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up uv and Python
+        # Pinned to an exact version on purpose: astral-sh/setup-uv publishes
+        # moving major tags only up to v7, so `@v10` does not resolve.
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: '3.13'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # `--only-group docs` deliberately skips the application dependencies
+      # (insightface, opencv, scikit-learn, …): the docs build needs none of
+      # them, and excluding them takes the environment from ~700 MB to ~120 MB.
+      # This holds only while mkdocstrings has no `:::` autodoc directive to
+      # resolve — see docs/dev-guide/index.md. Add one and this job must switch
+      # to a full `uv sync --group docs`.
+      - name: Install documentation dependencies
+        run: uv sync --only-group docs --frozen
+
+      # `strict` turns a broken internal link, a dead heading anchor or a page
+      # missing from a `.pages` nav file into a failure.
+      - name: Build the site
+        run: uv run --only-group docs --frozen properdocs build --strict
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: .build/docs
+
+  deploy:
+    name: Deploy
+    # Pull requests prove the site builds; only `develop` publishes it.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,115 @@
+copyright: Copyright &copy; 2026 K-Tech Italy
+dev_addr: 127.0.0.1:8001
+docs_dir: docs
+edit_uri: 'blob/develop/docs/'
+repo_url: https://github.com/k-tech-italy/id-dedup
+site_author: K-Tech Italy
+site_description: "Face-image deduplication and identity assignment"
+site_dir: ./.build/docs
+site_name: id-dedup
+site_url: https://k-tech-italy.github.io/id-dedup/
+# `strict` turns warnings (broken internal links, missing files, unrecognised
+# nav entries) into build failures. Spec 001 requires it; do not downgrade
+# without recording the reason here.
+strict: true
+
+# Anchor checking is INFO-level by default, so a link to a heading that no
+# longer exists would pass a strict build. Promote it to a warning, which
+# `strict` then turns into a failure.
+validation:
+  anchors: warn
+  absolute_links: warn
+  unrecognized_links: warn
+
+extra_css:
+  - _theme/css/style.css
+
+# `specs` holds requirement documents (docs/specs/), which are tracked in git
+# but are not part of the published site.
+exclude_docs: |
+  ~*
+  specs
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.snippets:
+      base_path: '.'
+      check_paths: true
+  - tables
+  - toc:
+      permalink: #
+      baselevel: 1
+
+extra:
+  generator: true
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/k-tech-italy/id-dedup
+
+theme:
+  name: "material"
+  favicon: _theme/img/favicon.svg
+  logo: _theme/img/logo.svg
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: indigo
+      media: "(prefers-color-scheme: light)"
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: indigo
+      media: "(prefers-color-scheme: dark)"
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+plugins:
+  - autorefs
+  - awesome-pages
+  - link-marker
+  - macros
+  - include-markdown:
+      encoding: utf-8
+      preserve_includer_indent: false
+      dedent: false
+      trailing_newlines: true
+      comments: false
+      rewrite_relative_urls: true
+      heading_offset: 0
+      recursive: true
+  # Autodoc is restricted to the Django-free modules (`ml.pipeline`, `images`)
+  # so that building the docs never needs a database or Django settings.
+  # See docs/dev-guide/index.md.
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+  - search
+
+watch:
+  - docs/

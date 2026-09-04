@@ -4,7 +4,7 @@ PYTHONPATH:=${PWD}/tests/:${PWD}:${PYTHONPATH}
 BUILDDIR?=./.build
 CURRENT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
 NODE_ENV?=production
-.PHONY: help runonce run i18n
+.PHONY: help runonce run i18n docs docs-serve
 .DEFAULT_GOAL := help
 
 ifeq ($(wildcard .initialized),)
@@ -94,3 +94,9 @@ dev: guard-REDIS_URL ## Run Celery worker + beat in one terminal (requires REDIS
 	@trap 'kill 0' INT TERM EXIT; \
 	celery -A id_dedup beat --loglevel=info & \
 	celery -A id_dedup worker --loglevel=info
+
+docs: ## Build the documentation site into .build/docs
+	uv run --group docs properdocs build
+
+docs-serve: ## Serve the documentation with live reload on http://127.0.0.1:8001
+	uv run --group docs properdocs serve

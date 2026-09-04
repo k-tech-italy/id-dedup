@@ -57,6 +57,36 @@ Unit tests are in `tests/unit/` and mock the ORM — no live database required. 
 
 See [`.agents/docs/testing.md`](.agents/docs/testing.md) for mock patterns and what to avoid.
 
+## Documentation
+
+The documentation site lives in `docs/` and is built with
+[properdocs](https://pypi.org/project/properdocs/), configured in `properdocs.yml`:
+
+```shell
+uv sync --group docs
+make docs-serve   # live reload on http://127.0.0.1:8001
+make docs         # build into .build/docs
+```
+
+- Build with `properdocs`, **not** `mkdocs` — the Makefile targets do the right thing.
+- The build runs `strict`, so a broken internal link or anchor fails it. `pytest` runs a
+  strict build too (`tests/test_docs.py`), and so does CI on every PR that touches
+  `docs/`.
+- Merging to `develop` publishes <https://k-tech-italy.github.io/id-dedup/>.
+- Navigation comes from a `.pages` file per directory, not a `nav:` block. A new page
+  must be listed in its directory's `.pages`.
+- **Technical pages go under `docs/dev-guide/`.** The top level (`index.md`,
+  `user-guide/`) is product-facing and stays that way.
+- User-facing changes should ship with the docs update in the same PR.
+
+Three places hold documentation, with three audiences — put a change in exactly one:
+
+| Topic | Canonical source |
+|------|------------------|
+| Contribution workflow, branching, commits, PRs | This file |
+| Agent-facing map of the source tree | `AGENTS.md` and `.agents/docs/` |
+| Install, usage, architecture narrative, reference | `docs/` |
+
 ## Code style
 
 Linting and formatting via [Ruff](https://docs.astral.sh/ruff/) (line-length 120, target py313):
