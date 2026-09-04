@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" role="img"
+     aria-label="Scattered face photographs resolving into three confirmed identities">
+  <defs>
+    <linearGradient id="hIndigo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#818CF8"/><stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="hTeal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2DD4BF"/><stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+    <linearGradient id="hAmber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24"/><stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <!-- userSpaceOnUse: the connector is a zero-height path, so an
+         objectBoundingBox gradient would have nothing to resolve against. -->
+    <linearGradient id="hFade" gradientUnits="userSpaceOnUse" x1="212" y1="0" x2="632" y2="0">
+      <stop offset="0" stop-color="#6366F1" stop-opacity="0"/>
+      <stop offset="1" stop-color="#6366F1" stop-opacity=".55"/>
+    </linearGradient>
+    <!-- One anonymous "photo of a face": a head-and-shoulders silhouette in a frame. -->
+    <symbol id="face" viewBox="0 0 40 48">
+      <rect x="1" y="1" width="38" height="46" rx="6" fill="currentColor" opacity=".16"/>
+      <rect x="1" y="1" width="38" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="2"/>
+      <circle cx="20" cy="18" r="7.5" fill="currentColor"/>
+      <path d="M6.5 42a13.5 13.5 0 0 1 27 0Z" fill="currentColor"/>
+    </symbol>
+  </defs>
+
+  <!-- LEFT: an unsorted pile. Deliberately jumbled, deliberately grey. -->
+  <g color="#94A3B8">
+    <use href="#face" x="14"  y="40"  width="40" height="48" transform="rotate(-9 34 64)"/>
+    <use href="#face" x="70"  y="22"  width="40" height="48" transform="rotate(7 90 46)"/>
+    <use href="#face" x="128" y="52"  width="40" height="48" transform="rotate(-4 148 76)"/>
+    <use href="#face" x="24"  y="118" width="40" height="48" transform="rotate(11 44 142)"/>
+    <use href="#face" x="86"  y="106" width="40" height="48" transform="rotate(-6 106 130)"/>
+    <use href="#face" x="140" y="140" width="40" height="48" transform="rotate(5 160 164)"/>
+    <use href="#face" x="44"  y="196" width="40" height="48" transform="rotate(-12 64 220)"/>
+    <use href="#face" x="106" y="204" width="40" height="48" transform="rotate(3 126 228)"/>
+  </g>
+  <rect x="12" y="14" width="180" height="252" rx="14" fill="none"
+        stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 6" opacity=".55"/>
+  <text x="102" y="286" text-anchor="middle" font-family="system-ui,sans-serif"
+        font-size="13" font-weight="600" fill="#94A3B8">unsorted uploads</text>
+
+  <!-- MIDDLE: the funnel. -->
+  <path d="M212 150h190" stroke="url(#hFade)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M578 150h58" stroke="#6366F1" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
+  <path d="m630 144 10 6-10 6" fill="none" stroke="#6366F1" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
+  <g transform="translate(300 108)">
+    <rect width="270" height="84" rx="42" fill="#6366F1" opacity=".12"/>
+    <rect width="270" height="84" rx="42" fill="none" stroke="#818CF8" stroke-width="1.5" opacity=".7"/>
+    <text x="135" y="38" text-anchor="middle" font-family="system-ui,sans-serif"
+          font-size="15" font-weight="700" fill="#818CF8">embed · cluster · match</text>
+    <text x="135" y="60" text-anchor="middle" font-family="system-ui,sans-serif"
+          font-size="12.5" fill="#94A3B8">then a person decides</text>
+  </g>
+
+  <!-- RIGHT: three resolved identities, each a colour, each labelled. -->
+  <g transform="translate(672 18)">
+    <g color="#6366F1">
+      <rect x="-10" y="-6" width="196" height="76" rx="14" fill="#6366F1" opacity=".10"/>
+      <use href="#face" x="2"  y="6" width="34" height="41"/>
+      <use href="#face" x="42" y="6" width="34" height="41"/>
+      <use href="#face" x="82" y="6" width="34" height="41"/>
+      <circle cx="152" cy="27" r="15" fill="url(#hIndigo)"/>
+      <path d="m145 27 5 5 10-10" fill="none" stroke="#fff" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g color="#14B8A6" transform="translate(0 92)">
+      <rect x="-10" y="-6" width="196" height="76" rx="14" fill="#14B8A6" opacity=".10"/>
+      <use href="#face" x="2"  y="6" width="34" height="41"/>
+      <use href="#face" x="42" y="6" width="34" height="41"/>
+      <circle cx="152" cy="27" r="15" fill="url(#hTeal)"/>
+      <path d="m145 27 5 5 10-10" fill="none" stroke="#fff" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g color="#F59E0B" transform="translate(0 184)">
+      <rect x="-10" y="-6" width="196" height="76" rx="14" fill="#F59E0B" opacity=".10"/>
+      <use href="#face" x="2"  y="6" width="34" height="41"/>
+      <use href="#face" x="42" y="6" width="34" height="41"/>
+      <use href="#face" x="82" y="6" width="34" height="41"/>
+      <circle cx="152" cy="27" r="15" fill="url(#hAmber)"/>
+      <path d="m145 27 5 5 10-10" fill="none" stroke="#fff" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <text x="770" y="292" text-anchor="middle" font-family="system-ui,sans-serif"
+        font-size="13" font-weight="600" fill="#94A3B8">confirmed identities</text>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 250" role="img"
+     aria-label="Side by side: the session-backed wizard and the database-backed ticket workflow">
+  <defs>
+    <style>
+      .card  { rx: 16; stroke-width: 2; }
+      .h     { font: 700 16px system-ui, sans-serif; }
+      .k     { font: 12.5px system-ui, sans-serif; fill: #94A3B8; }
+      .chip  { font: 700 11px system-ui, sans-serif; fill: #fff; }
+      .step  { font: 600 11.5px system-ui, sans-serif; fill: #fff; }
+    </style>
+  </defs>
+
+  <!-- Wizard -->
+  <rect class="card" x="14" y="14" width="356" height="222" fill="#6366F1" fill-opacity=".08" stroke="#818CF8"/>
+  <rect x="34" y="34" width="66" height="20" rx="10" fill="#6366F1"/>
+  <text class="chip" x="67" y="48" text-anchor="middle">/wizard/</text>
+  <text class="h" x="34" y="82" fill="#818CF8">The wizard</text>
+  <text class="k" x="34" y="104">One sitting, in the browser session.</text>
+  <g>
+    <rect x="34" y="122" width="74" height="30" rx="8" fill="#6366F1"/>
+    <text class="step" x="71" y="141" text-anchor="middle">Upload</text>
+    <rect x="118" y="122" width="74" height="30" rx="8" fill="#6366F1" fill-opacity=".82"/>
+    <text class="step" x="155" y="141" text-anchor="middle">Review</text>
+    <rect x="202" y="122" width="80" height="30" rx="8" fill="#6366F1" fill-opacity=".64"/>
+    <text class="step" x="242" y="141" text-anchor="middle">Adjudicate</text>
+    <rect x="292" y="122" width="60" height="30" rx="8" fill="#6366F1" fill-opacity=".46"/>
+    <text class="step" x="322" y="141" text-anchor="middle">Done</text>
+  </g>
+  <text class="k" x="34" y="182">Drag-and-drop regrouping, instant feedback.</text>
+  <text class="k" x="34" y="202">Close the tab and the batch is gone.</text>
+  <text class="k" x="34" y="222" font-weight="600" fill="#818CF8">Best for demos and one-off batches.</text>
+
+  <!-- Workflow -->
+  <rect class="card" x="410" y="14" width="356" height="222" fill="#14B8A6" fill-opacity=".08" stroke="#2DD4BF"/>
+  <rect x="430" y="34" width="80" height="20" rx="10" fill="#14B8A6"/>
+  <text class="chip" x="470" y="48" text-anchor="middle">/workflow/</text>
+  <text class="h" x="430" y="82" fill="#2DD4BF">The ticket queue</text>
+  <text class="k" x="430" y="104">Persistent, asynchronous, shareable.</text>
+  <g>
+    <rect x="430" y="122" width="74" height="30" rx="8" fill="#14B8A6"/>
+    <text class="step" x="467" y="141" text-anchor="middle">Upload</text>
+    <rect x="514" y="122" width="74" height="30" rx="8" fill="#14B8A6" fill-opacity=".82"/>
+    <text class="step" x="551" y="141" text-anchor="middle">Queued</text>
+    <rect x="598" y="122" width="74" height="30" rx="8" fill="#14B8A6" fill-opacity=".64"/>
+    <text class="step" x="635" y="141" text-anchor="middle">Tickets</text>
+    <rect x="682" y="122" width="66" height="30" rx="8" fill="#14B8A6" fill-opacity=".46"/>
+    <text class="step" x="715" y="141" text-anchor="middle">Review</text>
+  </g>
+  <text class="k" x="430" y="182">Clustering runs on a worker, not in the request.</text>
+  <text class="k" x="430" y="202">Every decision is recorded and attributable.</text>
+  <text class="k" x="430" y="222" font-weight="600" fill="#2DD4BF">Best for real, ongoing work.</text>
+</svg>

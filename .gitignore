@@ -7,6 +7,9 @@
 !.*.example
 !.python-version
 !.nvmrc
+!.github
+# awesome-pages nav files live inside docs/ and must be tracked
+!**/.pages
 
 node_modules
 *.pyc

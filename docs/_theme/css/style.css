@@ -1,0 +1,146 @@
+/* ---------------------------------------------------------------------------
+   Project overrides on top of the Material theme.
+   Colours are taken from Material's own custom properties wherever possible,
+   so everything follows the light/dark toggle without a second definition.
+   --------------------------------------------------------------------------- */
+
+:root {
+    --idd-indigo: #6366f1;
+    --idd-indigo-soft: #818cf8;
+    --idd-teal: #14b8a6;
+    --idd-amber: #f59e0b;
+}
+
+/* --- Landing hero ---------------------------------------------------------- */
+
+.md-typeset .hero {
+    position: relative;
+    margin: 0 0 1.4rem;
+    padding: 2.2rem 1rem 1.4rem;
+    text-align: center;
+}
+
+/* A soft wash behind the hero, bled out past the content column. Built from
+   colour-mix on the theme's own tokens so it works in both palettes. */
+.md-typeset .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0 -3rem;
+    z-index: -1;
+    border-radius: 1rem;
+    background:
+        radial-gradient(60% 80% at 50% 0%, rgb(99 102 241 / 14%), transparent 70%),
+        radial-gradient(40% 60% at 85% 40%, rgb(20 184 166 / 10%), transparent 70%);
+}
+
+.md-typeset .hero-title {
+    margin: 0.4rem 0 0.6rem;
+    font-size: 2.6rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.md-typeset .hero-lede {
+    margin: 0 auto 1.8rem;
+    max-width: 34rem;
+    color: var(--md-default-fg-color--light);
+    font-size: 0.86rem;
+    line-height: 1.65;
+}
+
+.md-typeset .hero-lede strong {
+    color: var(--md-default-fg-color);
+}
+
+.md-typeset .hero .md-button {
+    margin: 0 0.2rem 0.4rem;
+}
+
+.md-typeset .hero-art {
+    display: block;
+    margin: 1.8rem auto 0;
+    width: 100%;
+    max-width: 46rem;
+}
+
+/* Material renders a page title above the content; the hero supplies its own. */
+.md-typeset .hero-title + p {
+    margin-top: 0;
+}
+
+/* --- Figures --------------------------------------------------------------- */
+
+/* Diagrams are wide by nature. Let them scroll on a narrow screen rather than
+   forcing the whole page to scroll sideways. */
+.md-typeset .figure,
+.md-typeset img.figure {
+    display: block;
+    margin: 1.8rem auto;
+    width: 100%;
+    max-width: 44rem;
+}
+
+.md-typeset div.figure {
+    overflow-x: auto;
+}
+
+.md-typeset div.figure img {
+    display: block;
+    margin: 0 auto;
+    min-width: 30rem;
+}
+
+/* --- Grid cards ------------------------------------------------------------ */
+
+.md-typeset .grid.cards > ul > li {
+    border-radius: 0.5rem;
+    transition: border-color 160ms, box-shadow 160ms, transform 160ms;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+    border-color: var(--idd-indigo-soft);
+    box-shadow: 0 0.2rem 0.9rem rgb(99 102 241 / 18%);
+    transform: translateY(-2px);
+}
+
+.md-typeset .grid.cards > ul > li > hr {
+    margin: 0.6rem 0;
+}
+
+.md-typeset .grid.cards h3 {
+    margin: 0.5rem 0 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.md-typeset .card-icon {
+    display: block;
+    width: 2.6rem;
+    height: 2.6rem;
+    margin: 0 0 0.2rem;
+}
+
+/* --- Reference tables ------------------------------------------------------ */
+
+/* Field and settings tables carry long identifiers; keep them legible instead
+   of letting the theme squash the value column. */
+.md-typeset table:not([class]) {
+    font-size: 0.72rem;
+}
+
+.md-typeset table:not([class]) td code {
+    white-space: nowrap;
+}
+
+/* --- Small screens --------------------------------------------------------- */
+
+@media screen and (max-width: 44.98em) {
+    .md-typeset .hero-title {
+        font-size: 1.9rem;
+    }
+
+    .md-typeset div.figure img {
+        min-width: 22rem;
+    }
+}
